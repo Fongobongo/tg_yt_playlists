@@ -212,6 +212,23 @@ async def get_playlists_for_session(
     ]
 
 
+async def delete_all_playlists_in_session(
+    conn: asyncpg.Connection, session_id: str
+) -> int:
+    """
+    Delete all playlists (and their videos) for the given session.
+    Returns the number of playlists deleted.
+    """
+    # First count how many playlists exist
+    count_row = await conn.fetchrow(
+        "SELECT COUNT(*) AS cnt FROM playlists WHERE session_id = $1", session_id
+    )
+    count = count_row["cnt"] if count_row else 0
+    # Execute delete; videos will be cascade-deleted due to FK.
+    await conn.execute("DELETE FROM playlists WHERE session_id = $1", session_id)
+    return count
+
+
 # Video operations
 async def create_videos_bulk(
     conn: asyncpg.Connection,

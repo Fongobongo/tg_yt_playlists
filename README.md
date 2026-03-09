@@ -97,6 +97,7 @@ tg_yt/
 - Send a YouTube playlist URL, e.g. `https://www.youtube.com/playlist?list=PL...`.
 - The bot will fetch the playlist, store it, and reply with the list of videos that appear in **all** playlists added so far in this chat.
 - Use `/playlists` to see all playlists added to the current session (includes YouTube playlist ID).
+- Use `/clear_playlists` to delete all playlists in the current session (keeps the session and users).
 - Use `/delete <youtube_playlist_id>` to remove a specific playlist from the session (e.g., `/delete PL123abc`).
 - Use `/clear` to delete all data for the current session (anyone can use it; in production restrict to admins).
 

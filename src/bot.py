@@ -19,6 +19,7 @@ from .database import (
     create_playlist,
     create_videos_bulk,
     get_playlists_for_session,
+    delete_all_playlists_in_session,
 )
 from .intersection import compute_common_videos
 from .youtube import fetch_playlist_info
@@ -72,7 +73,7 @@ async def cmd_start(message: Message, bot: Bot) -> None:
         f"This chat (ID: {chat_id}) has its own session.\n"
         f"Send me a YouTube playlist URL and I'll add it to the session.\n"
         f"I'll then show videos that are common to all playlists in this session.\n"
-        f"Commands: /start, /playlists, /delete <youtube_playlist_id>, /clear"
+        f"Commands: /start, /playlists, /clear_playlists, /delete <youtube_playlist_id>, /clear"
     )
 
 
@@ -96,6 +97,20 @@ async def cmd_playlists(message: Message, bot: Bot) -> None:
             for p in playlists
         ]
         await message.reply("Playlists in this session:\n\n" + "\n".join(lines))
+
+
+async def cmd_clear_playlists(message: Message, bot: Bot) -> None:
+    """Delete all playlists (and their videos) in the current session, but keep the session and users."""
+    chat_id = message.chat.id
+    async with bot["db_pool"].acquire() as conn:
+        # Get session ID
+        row = await conn.fetchrow("SELECT id FROM sessions WHERE chat_id = $1", chat_id)
+        if not row:
+            await message.reply("No session found. Start one with /start.")
+            return
+        session_id = str(row["id"])
+        count = await delete_all_playlists_in_session(conn, session_id)
+        await message.reply(f"Deleted {count} playlist(s) from this session. The session remains active.")
 
 
 async def cmd_clear(message: Message, bot: Bot) -> None:
@@ -220,6 +235,7 @@ def create_dispatcher(config: Config) -> Dispatcher:
     # Command handlers
     dp.message.register(cmd_start, Command("start"))
     dp.message.register(cmd_playlists, Command("playlists"))
+    dp.message.register(cmd_clear_playlists, Command("clear_playlists"))
     dp.message.register(cmd_delete_playlist, Command("delete"))
     dp.message.register(cmd_clear, Command("clear"))
 
