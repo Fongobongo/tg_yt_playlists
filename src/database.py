@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 # SQL for table creation
 CREATE_TABLES_SQL = """
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id BIGINT NOT NULL UNIQUE,
