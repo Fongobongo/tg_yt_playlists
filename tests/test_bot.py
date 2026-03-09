@@ -58,8 +58,8 @@ async def test_handle_playlist_url(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
-    bot["db_pool"].acquire = lambda: DummyACM()
+    bot.db_pool = MagicMock()
+    bot.db_pool.acquire = lambda: DummyACM()
 
     # Mock database functions and youtube fetch
     mock_session = MagicMock(id="session1")
@@ -116,8 +116,8 @@ async def test_cmd_start(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
-    bot["db_pool"].acquire = lambda: DummyACM()
+    bot.db_pool = MagicMock()
+    bot.db_pool.acquire = lambda: DummyACM()
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -155,10 +155,10 @@ async def test_cmd_playlists(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -192,11 +192,11 @@ async def test_cmd_clear_playlists_success(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
     mock_conn.execute = AsyncMock(return_value="DELETE 2")
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -226,10 +226,10 @@ async def test_cmd_clear_playlists_no_session(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     mock_conn.fetchrow = AsyncMock(return_value=None)  # No session
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -257,13 +257,13 @@ async def test_cmd_delete_playlist_success(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     # session exists
     mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
     # execute returns "DELETE 1"
     mock_conn.execute = AsyncMock(return_value="DELETE 1")
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -298,11 +298,11 @@ async def test_cmd_delete_playlist_not_found(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
     mock_conn.execute = AsyncMock(return_value="DELETE 0")
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -328,10 +328,10 @@ class DummyConnWithAcquire:
 
 async def test_cmd_session_group(mock_bot):
     bot = mock_bot
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     mock_conn.fetchrow = AsyncMock(return_value={"id": "sess1", "chat_id": 123, "short_code": "abc"})
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
 
     msg = MagicMock()
     msg.chat = MagicMock()
@@ -350,7 +350,7 @@ async def test_cmd_session_group(mock_bot):
 
 async def test_cmd_session_private_with_active(mock_bot):
     bot = mock_bot
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
     # First fetch active session returns a row
     # It will call get_active_session_for_user -> fetchrow returns session dict
@@ -366,8 +366,8 @@ async def test_cmd_session_private_with_active(mock_bot):
     with patch("src.bot.get_active_session_for_user", return_value=mock_session) as mock_get_active, \
          patch("src.bot.get_session_by_chat_id", return_value=None):
         bot = mock_bot
-        bot["db_pool"] = MagicMock()
-        bot["db_pool"].acquire = lambda: DummyConnWithAcquire(MagicMock())
+        bot.db_pool = MagicMock()
+        bot.db_pool.acquire = lambda: DummyConnWithAcquire(MagicMock())
         msg = MagicMock()
         msg.chat = MagicMock()
         msg.chat.id = 456
@@ -382,9 +382,9 @@ async def test_cmd_session_private_with_active(mock_bot):
 
 async def test_cmd_start_join_code_private(mock_bot):
     bot = mock_bot
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
     # Mock get_session_by_short_code to return a session
     mock_session = MagicMock(id="joined_sess", chat_id=789, short_code="JOINME")
     msg = MagicMock()
@@ -409,9 +409,9 @@ async def test_cmd_start_join_code_private(mock_bot):
 
 async def test_cmd_leave_private(mock_bot):
     bot = mock_bot
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
     mock_conn = MagicMock()
-    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
     msg = MagicMock()
     msg.chat = MagicMock()
     msg.chat.type = "private"
@@ -437,7 +437,7 @@ async def test_cmd_leave_not_private(mock_bot):
 
 async def test_cmd_delete_playlist_missing_arg(mock_bot):
     bot = mock_bot
-    bot["db_pool"] = MagicMock()
+    bot.db_pool = MagicMock()
 
     class DummyConn:
         pass
@@ -448,7 +448,7 @@ async def test_cmd_delete_playlist_missing_arg(mock_bot):
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    bot["db_pool"].acquire = lambda: DummyACM()
+    bot.db_pool.acquire = lambda: DummyACM()
 
     msg = MagicMock()
     msg.chat = MagicMock()

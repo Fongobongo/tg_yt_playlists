@@ -1,0 +1,167 @@
+You are an expert Python developer. Build a complete Telegram bot project with the following specifications:
+
+1. **Tech Stack**:
+   - Python 3.12+
+   - aiogram 3.x (async framework)
+   - PostgreSQL (Supabase compatible) for data persistence
+   - yt-dlp for fetching YouTube playlist metadata
+   - AsyncIO throughout
+
+2. **Bot Functionality**:
+   - Each Telegram chat (group or private) is a separate "session". Users in different chats are isolated.
+   - Command `/start`: initializes the session for the chat and sends a welcome message with instructions.
+   - When a user sends a YouTube playlist URL (e.g., `https://www.youtube.com/playlist?list=...`), the bot must:
+     * Validate the URL and extract the playlist ID.
+     * Use yt-dlp to fetch the playlist metadata (list of videos). Run yt-dlp in a thread executor to avoid blocking the event loop.
+     * For each video, obtain the YouTube video ID, title, and URL (https://www.youtube.com/watch?v=<id>).
+     * Store the playlist and its videos in the database, linked to the current session and the user (by Telegram ID and username).
+     * After storing, compute the intersection of video IDs across *all* playlists that have been added in this session (including the new one). Videos that appear in every playlist are considered common.
+     * Reply to the user with a formatted list of common videos: each line should include the video title and a clickable link. If no common videos exist, reply with a friendly message saying so.
+   - Optional: a command `/playlists` to list all playlists in the session, and `/clear` to remove all data for the session (for admins only). Not required but nice to have.
+
+3. **Database Schema** (PostgreSQL):
+   - `sessions`:
+     * `id` UUID primary key
+     * `chat_id` BIGINT unique (the Telegram chat identifier)
+     * `created_at` TIMESTAMPTZ default now()
+   - `users`:
+     * `id` UUID primary key
+     * `session_id` FK references sessions(id) (ON DELETE CASCADE)
+     * `telegram_id` BIGINT (the user's Telegram ID within the session; combined with session_id should be effectively unique)
+     * `username` TEXT (Telegram username, optional)
+     * `created_at` TIMESTAMPTZ default now()
+   - `playlists`:
+     * `id` UUID primary key
+     * `session_id` FK references sessions(id)
+     * `user_id` FK references users(id) (ON DELETE CASCADE)
+     * `youtube_playlist_id` TEXT (the YouTube playlist ID, e.g., PL...)
+     * `title` TEXT (playlist title)
+     * `url` TEXT (full playlist URL)
+     * `created_at` TIMESTAMPTZ default now()
+   - `videos`:
+     * `id` UUID primary key
+     * `playlist_id` FK references playlists(id) (ON DELETE CASCADE)
+     * `youtube_video_id` TEXT (YouTube video ID)
+     * `title` TEXT (video title)
+     * `url` TEXT (video URL)
+     * `position` INT (order in playlist, optional but yt-dlp provides)
+     * `created_at` TIMESTAMPTZ default now()
+   - Indexes: on `users(session_id, telegram_id)`, on `playlists(session_id)`, on `videos(playlist_id)`, and maybe on `videos(youtube_video_id)` for faster intersection queries.
+
+   We'll use raw asyncpg for simplicity; no ORM. We'll write SQL queries directly.
+
+4. **Project Structure**:
+
+   ```
+   tg_yt/
+   ├── Dockerfile
+   ├── docker-compose.yml
+   ├── .env.example
+   ├── requirements.txt
+   ├── pyproject.toml (optional, but we'll stick to requirements.txt)
+   ├── prompt.txt (this file, optional)
+   ├── src/
+   │   ├── __init__.py
+   │   ├── bot.py          # aiogram bot setup, handlers, main entry
+   │   ├── database.py     # connection pool and table creation
+   │   ├── models.py       # data classes or namedtuples for Session, User, Playlist, Video
+   │   ├── youtube.py      # yt-dlp wrapper to fetch playlist metadata
+   │   ├── intersection.py # logic to compute intersection of videos across playlists for a session
+   │   └── config.py       # load env vars
+   ├── tests/
+   │   ├── __init__.py
+   │   ├── conftest.py     # fixtures for asyncpg test database, bot fixture
+   │   ├── test_database.py
+   │   ├── test_intersection.py
+   │   └── test_bot.py
+   └── README.md
+   ```
+
+5. **Configuration**:
+   - Use python-dotenv to load environment variables from `.env`.
+   - Required env vars:
+     * `TELEGRAM_BOT_TOKEN` (string)
+     * `DATABASE_URL` (PostgreSQL connection string, e.g., postgresql://user:pass@host:port/db)
+     * Optionally `LOG_LEVEL` (default INFO)
+   - The bot will create tables on startup if they don't exist. For production, consider migrations, but for simplicity we'll do that.
+
+6. **Docker**:
+   - Dockerfile: based on `python:3.12-slim`. Install system dependencies: `ffmpeg` (required by yt-dlp for some extraction, though maybe not strictly necessary for metadata, but safe), `gcc`, `libpq-dev` (for asyncpg). Copy project, pip install -r requirements.txt, run `python -m src.bot`.
+   - docker-compose.yml:
+     * `bot` service built from Dockerfile, depends on `db`, env from .env or file.
+     * `db` service: `postgres:15-alpine` (or similar). Set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB. Expose port 5432 to bot only.
+     * Optionally add a `volumes` to persist DB.
+   - Provide `.env.example` with placeholder values.
+
+7. **Testing**:
+   - Use pytest and pytest-asyncio.
+   - For database tests, create a separate test database (e.g., name suffix `_test`) and use a fixture that creates a fresh connection pool and runs setup (create tables). Then each test can insert sample data and verify behavior. Clean up after.
+   - Mock Telegram updates using aiogram's `Bot` and `Dispatcher` in memory, or use `aiogram.utils kinds`? Actually we can test handlers by creating `types.Message` objects and calling the handler function directly. Provide tests for:
+     * Database operations: insert user, playlist, videos; query intersection.
+     * Intersection function: given sets of video IDs, compute correct intersection.
+     * Bot handler: simulate a user sending a playlist URL and check the bot replies appropriately (maybe using a mock `message.reply` method).
+   - Write tests in English, using descriptive names.
+
+8. **Documentation**:
+   - README.md must include:
+     * Project description
+     * Features
+     * Tech stack
+     * Setup instructions: clone, copy .env.example to .env, fill values (especially Telegram bot token from BotFather, and DATABASE_URL - for local use docker-compose will set it automatically, e.g., postgresql://postgres:password@db:5432/tg_yt).
+     * How to run: `docker-compose up --build`
+     * Database schema (diagram optional)
+     * How to use the bot: commands, flow.
+     * How to run tests: `pytest` (maybe inside container or locally with env).
+     * Notes about yt-dlp and potential rate limits.
+   - Docstrings for each module and function: explain purpose, args, returns, raises.
+
+9. **Code Quality**:
+   - Use type hints for all function signatures.
+   - Use `logging` module. Configure logger at info level. Log important events (startup, DB connection, playlist added, intersection computed, errors).
+   - Handle common errors: invalid URL, yt-dlp failures (network, playlist not found), database errors.
+   - Use async context managers for database connections and cursors.
+   - Use proper aiogram 3 patterns: `Router`, handlers as functions with `message: types.Message` or `command` filters.
+
+10. **Implementation Steps** (commit after each):
+    - Step 1: Create project structure (directories, empty files) and git init. Commit: "chore: initial project structure".
+    - Step 2: requirements.txt (aiogram, asyncpg, yt-dlp, python-dotenv, pytest, pytest-asyncio). Commit.
+    - Step 3: Dockerfile and docker-compose.yml, .env.example. Commit.
+    - Step 4: config.py - environment loading and validation.
+    - Step 5: models.py - define dataclasses for Session, User, Playlist, Video.
+    - Step 6: database.py - asyncpg connection pool, create_tables function, and CRUD functions (create_session, get_or_create_user, add_playlist, add_videos, get_all_playlists_videos for session, etc.). Include tests in commit? Better separate: first commit database module, then commit tests.
+    - Step 7: youtube.py - async function `fetch_playlist_info(playlist_url)` that uses yt-dlp in thread and returns playlist title and list of videos (video_id, title, url). Write tests mocking yt-dlp.
+    - Step 8: intersection.py - function `compute_common_videos(session_id)` that fetches all playlists' videos from DB and returns list of video objects that appear in all playlists. Could be pure function that takes list of sets of video IDs and returns intersection. Also DB helper to get videos per playlist.
+    - Step 9: bot.py - main bot. Set up dispatcher, router. Handlers:
+        * `cmd_start`: ensure session exists, reply welcome.
+        * `handle_playlist_url`: detect message with playlist URL (maybe using regex), process: fetch playlist info, store in DB, then compute common videos and reply.
+        * (optional) `cmd_playlists`, `cmd_clear`.
+    - Step 10: Integrate all parts, main block to start bot.
+    - Step 11: Write tests for database, intersection, youtube (mock yt-dlp), bot handlers (use MagicMock for message).
+    - Step 12: Write README.md with all required sections.
+    - Step 13: Run tests to ensure they pass. Fix any issues.
+    - Step 14: Final commit and tag maybe.
+    - Step 15: Run the openclaw event command.
+
+Note: We must commit after each logical change, as stated.
+
+**Important**: Use async/await correctly, and ensure proper cleanup (e.g., closing DB pool on bot shutdown).
+
+**About yt-dlp usage**: We'll use a thread pool executor to run `yt_dlp.YoutubeDL(...).extract_info(playlist_url, download=False)`. yt-dlp returns an info dict with entries (videos) if it's a playlist. We'll extract each entry's id, title, and construct URL.
+
+**Intersection algorithm**: For a given session, query all videos with their playlist_id and video_id. Group by playlist, get sets of video_ids for each playlist. Intersection = set.intersection(*list_of_sets). Then fetch video details (title, url) for those video IDs (maybe from any playlist since they are same). But careful: video titles could differ slightly? But we'll assume consistency.
+
+Better: store videos by video_id, and ensure title consistency across playlists? We can store each video separately per playlist, but if the same video appears in multiple playlists, the titles should be identical. We can use video_id as unique key across playlists? But the videos table includes playlist_id, so same video in multiple playlists would have multiple rows. That's fine. For intersection, we need video IDs that appear in every playlist. Then we can retrieve title from any occurrence (maybe the first). We'll need to query videos for those IDs and deduplicate.
+
+Implementation: For a session, get all playlists. For each playlist, get set of video_ids. Compute intersection. Then fetch videos where video_id in intersection and playlist_id in session's playlists, and maybe group by video_id to get distinct title and URL.
+
+8. **Environment and constraints**: Do not use any paid APIs (YouTube Data API). yt-dlp scrapes the web pages, which is free but may be rate-limited. That's acceptable.
+
+Now proceed. Create the repository and commit after each step.
+
+**Final instruction**: When everything is done and tests pass, run:
+
+```
+openclaw system event --text "Done: Built Telegram bot for playlist intersection with aiogram, asyncpg, yt-dlp, Docker, tests, and docs" --mode now
+```
+
+Start now.

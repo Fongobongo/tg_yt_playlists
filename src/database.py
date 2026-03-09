@@ -19,6 +19,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id BIGINT NOT NULL UNIQUE,
+    short_code TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -51,11 +52,19 @@ CREATE TABLE IF NOT EXISTS videos (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS user_active_session (
+    telegram_id BIGINT PRIMARY KEY,
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_users_session_id ON users(session_id);
 CREATE INDEX IF NOT EXISTS idx_playlists_session_id ON playlists(session_id);
 CREATE INDEX IF NOT EXISTS idx_videos_playlist_id ON videos(playlist_id);
 CREATE INDEX IF NOT EXISTS idx_videos_youtube_id ON videos(youtube_video_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_short_code ON sessions(short_code);
+CREATE INDEX IF NOT EXISTS idx_user_active_session_session_id ON user_active_session(session_id);
 """
 
 
@@ -82,23 +91,36 @@ async def close_pool(pool: asyncpg.Pool) -> None:
 # Session operations
 async def get_session_by_chat_id(conn: asyncpg.Connection, chat_id: int) -> Session | None:
     row = await conn.fetchrow(
-        "SELECT id, chat_id, created_at FROM sessions WHERE chat_id = $1", chat_id
+        "SELECT id, chat_id, short_code, created_at FROM sessions WHERE chat_id = $1", chat_id
     )
     if row:
-        return Session(id=str(row["id"]), chat_id=row["chat_id"], created_at=row["created_at"])
+        return Session(
+            id=str(row["id"]),
+            chat_id=row["chat_id"],
+            short_code=row["short_code"],
+            created_at=row["created_at"],
+        )
     return None
 
 
-async def create_session(conn: asyncpg.Connection, chat_id: int) -> Session:
+async def create_session(conn: asyncpg.Connection, chat_id: int, short_code: str | None = None) -> Session:
     session_id = uuid.uuid4()
     created_at = datetime.utcnow()
+    if short_code is None:
+        short_code = uuid.uuid4().hex  # 32-character hex string
     await conn.execute(
-        "INSERT INTO sessions (id, chat_id, created_at) VALUES ($1, $2, $3)",
+        "INSERT INTO sessions (id, chat_id, short_code, created_at) VALUES ($1, $2, $3, $4)",
         session_id,
         chat_id,
+        short_code,
         created_at,
     )
-    return Session(id=str(session_id), chat_id=chat_id, created_at=created_at)
+    return Session(
+        id=str(session_id),
+        chat_id=chat_id,
+        short_code=short_code,
+        created_at=created_at,
+    )
 
 
 async def get_or_create_session(conn: asyncpg.Connection, chat_id: int) -> Session:
@@ -338,3 +360,55 @@ async def get_videos_by_youtube_ids(
     ]
 
 
+# Active session management (for joining sessions via short code)
+async def get_session_by_short_code(conn: asyncpg.Connection, short_code: str) -> Session | None:
+    row = await conn.fetchrow(
+        "SELECT id, chat_id, short_code, created_at FROM sessions WHERE short_code = $1",
+        short_code,
+    )
+    if row:
+        return Session(
+            id=str(row["id"]),
+            chat_id=row["chat_id"],
+            short_code=row["short_code"],
+            created_at=row["created_at"],
+        )
+    return None
+
+
+async def get_active_session_for_user(conn: asyncpg.Connection, telegram_id: int) -> Session | None:
+    row = await conn.fetchrow(
+        """
+        SELECT s.id, s.chat_id, s.short_code, s.created_at
+        FROM user_active_session uas
+        JOIN sessions s ON uas.session_id = s.id
+        WHERE uas.telegram_id = $1
+        """,
+        telegram_id,
+    )
+    if row:
+        return Session(
+            id=str(row["id"]),
+            chat_id=row["chat_id"],
+            short_code=row["short_code"],
+            created_at=row["created_at"],
+        )
+    return None
+
+
+async def set_active_session_for_user(conn: asyncpg.Connection, telegram_id: int, session_id: str) -> None:
+    await conn.execute(
+        """
+        INSERT INTO user_active_session (telegram_id, session_id, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (telegram_id) DO UPDATE SET session_id = EXCLUDED.session_id, updated_at = NOW()
+        """,
+        telegram_id,
+        session_id,
+    )
+
+
+async def clear_active_session_for_user(conn: asyncpg.Connection, telegram_id: int) -> None:
+    await conn.execute(
+        "DELETE FROM user_active_session WHERE telegram_id = $1", telegram_id
+    )

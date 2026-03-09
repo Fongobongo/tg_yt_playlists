@@ -12,6 +12,7 @@ class Session:
     id: str  # UUID
     chat_id: int
     created_at: datetime
+    short_code: str | None = None
 
 
 @dataclass
