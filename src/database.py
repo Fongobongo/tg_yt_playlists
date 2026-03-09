@@ -319,14 +319,3 @@ async def get_videos_by_youtube_ids(
     ]
 
 
-async def get_common_videos(conn: asyncpg.Connection, session_id: str) -> List[Video]:
-    """Compute common videos across all playlists in the session."""
-    video_sets = await get_video_sets_for_session(conn, session_id)
-    if not video_sets:
-        return []
-    # If there are no playlists, video_sets empty -> return []
-    # If there is at least one playlist, intersection
-    common_ids = set.intersection(*video_sets) if video_sets else set()
-    if not common_ids:
-        return []
-    return await get_videos_by_youtube_ids(conn, list(common_ids))
