@@ -119,16 +119,21 @@ Foreign keys with `ON DELETE CASCADE` ensure data integrity. Indexes on `session
 
 ## Running Tests
 
-Ensure a PostgreSQL instance is available (the same `DATABASE_URL` or `TEST_DATABASE_URL` can be used). Tests will create and roll back data within a transaction for isolation.
+Ensure a PostgreSQL instance is available. For best isolation, create a separate test database and set `TEST_DATABASE_URL`:
 
 ```bash
+# Example: create a test database
+createdb tg_yt_test  # or via psql: CREATE DATABASE tg_yt_test;
+export TEST_DATABASE_URL=postgresql://postgres:password@localhost:5432/tg_yt_test
 pytest
 ```
 
-Or with Docker compose, you can run tests inside the bot container:
+If `TEST_DATABASE_URL` is not set, the tests will use `DATABASE_URL`. Tests create needed tables and roll back changes within a transaction, so they won't persist data.
+
+Alternatively, run tests inside the bot container:
 
 ```bash
-docker-compose exec bot pytest
+docker compose run --rm bot pytest
 ```
 
 The test suite covers:
