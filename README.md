@@ -93,13 +93,46 @@ tg_yt/
 
 ## Usage
 
-- In any Telegram chat, send `/start` to initialize the session.
-- Send a YouTube playlist URL, e.g. `https://www.youtube.com/playlist?list=PL...`.
-- The bot will fetch the playlist, store it, and reply with the list of videos that appear in **all** playlists added so far in this chat.
-- Use `/playlists` to see all playlists added to the current session (includes YouTube playlist ID).
-- Use `/clear_playlists` to delete all playlists in the current session (keeps the session and users).
-- Use `/delete <youtube_playlist_id>` to remove a specific playlist from the session (e.g., `/delete PL123abc`).
-- Use `/clear` to delete all data for the current session (anyone can use it; in production restrict to admins).
+### Sessions
+
+- **Group chats:** Each group has its own session based on the group chat ID. Anyone in the group can add playlists; common videos are computed across all playlists added in that group.
+- **Private chats:** Your private chat with the bot has its own session. You can also join another session (e.g., a friend's group session) to compare playlists together.
+
+### Basic flow
+
+1. In a group or private chat, send `/start` to create/initialize the session.
+2. Send a YouTube playlist URL: `https://www.youtube.com/playlist?list=PL...`
+3. The bot will fetch the playlist and show videos common to all playlists in the current session.
+4. More users can add their own playlists; the intersection updates after each addition.
+
+### Sharing a session
+
+To compare playlists with someone else without being in the same group:
+
+- In your **private chat** with the bot, run `/start` to create your own session (or use an existing one).
+- Run `/session` to get the **short code** and an invite link like `https://t.me/YourBot?start=XXXX`.
+- Share that link with a friend.
+- Your friend opens the link in Telegram, which starts the bot and sends `/start XXXX` to join your session.
+- Once they've joined, both of you can add playlists (in your respective private chats) and see common videos across all playlists in the shared session.
+
+Commands:
+- `/session` — show current session ID, short code, and invite link (in private chat).
+- `/start <code>` — join a session by short code (private chat only).
+- `/leave` — leave the current active session (private chat only). After leaving, you'll create a new session next time you add a playlist.
+
+### Other commands
+
+- `/playlists` — list all playlists in the current session (shows title, YouTube ID, and URL).
+- `/clear_playlists` — delete all playlists in the session (keeps session and users).
+- `/delete <youtube_playlist_id>` — remove a specific playlist from the session. Use the YouTube ID from the `/playlists` list.
+- `/clear` — delete the entire session and all its data (for groups, this clears the group session; in private, it deletes your active session and your pointer to it).
+
+### Notes
+
+- The bot accepts only valid YouTube playlist URLs. It uses `yt-dlp` to extract metadata; no YouTube API key required.
+- Due to network constraints, fetching a playlist may take a few seconds.
+- Videos are identified by YouTube video ID. Titles and URLs are taken from the first occurrence in the database.
+- In private chats, the bot tracks your "active session" so you can participate in a shared session without being in the same group.
 
 ### Notes
 
