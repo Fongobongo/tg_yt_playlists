@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from src.bot import extract_playlist_url, handle_playlist_url, cmd_start
+from src.bot import extract_playlist_url, handle_playlist_url, cmd_start, cmd_playlists, cmd_delete_playlist
 
 pytestmark = pytest.mark.asyncio
 
@@ -114,3 +114,157 @@ async def test_cmd_start(mock_bot):
     msg.reply.assert_awaited_once()
     reply_text = msg.reply.call_args[0][0]
     assert "Hello!" in reply_text or "YouTube" in reply_text
+
+
+async def test_cmd_playlists(mock_bot):
+    bot = mock_bot
+
+    class DummyConn:
+        pass
+
+    class DummyACM:
+        async def __aenter__(self):
+            return DummyConn()
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    bot["db_pool"] = MagicMock()
+    bot["db_pool"].acquire = lambda: DummyACM()
+
+    msg = MagicMock()
+    msg.chat = MagicMock()
+    msg.chat.id = 123
+    msg.reply = AsyncMock()
+
+    # Mock a session and two playlists
+    mock_session = MagicMock(id="sess123")
+    mock_playlists = [
+        MagicMock(title="Playlist A", youtube_playlist_id="PL_A", url="https://youtube.com/playlist?list=PL_A"),
+        MagicMock(title="Playlist B", youtube_playlist_id="PL_B", url="https://youtube.com/playlist?list=PL_B"),
+    ]
+
+    with patch("src.bot.get_or_create_session", return_value=mock_session) as m_session_get, \
+         patch("src.bot.get_playlists_for_session", return_value=mock_playlists) as m_get_playlists:
+
+        # Actually, cmd_playlists does not call get_or_create_session; it fetches session from DB.
+        # So we need to patch the fetchrow call directly.
+        # Let's patch at the database level: we need to simulate conn.fetchrow returning a row with id.
+        # We'll also need a connection mock.
+        # Redesign: we will create a mock connection that returns a row for session.
+
+        # We'll set bot["db_pool"].acquire to return a context manager yielding a mock connection.
+        mock_conn = MagicMock()
+        # Simulate sessions table fetch
+        mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
+        bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+
+        await cmd_playlists(msg, bot)
+
+    msg.reply.assert_awaited_once()
+    reply_text = msg.reply.call_args[0][0]
+    assert "Playlists in this session:" in reply_text
+    assert "Playlist A" in reply_text
+    assert "PL_A" in reply_text
+    assert "Playlist B" in reply_text
+
+
+async def test_cmd_delete_playlist_success(mock_bot):
+    bot = mock_bot
+
+    class DummyConn:
+        pass
+
+    class DummyConnWithAcquire:
+        def __init__(self, conn):
+            self.conn = conn
+        async def __aenter__(self):
+            return self.conn
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    bot["db_pool"] = MagicMock()
+    mock_conn = MagicMock()
+    # session exists
+    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
+    # execute returns "DELETE 1"
+    mock_conn.execute = AsyncMock(return_value="DELETE 1")
+    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+
+    msg = MagicMock()
+    msg.chat = MagicMock()
+    msg.chat.id = 123
+    msg.text = "/delete PL_TO_DELETE"
+    msg.reply = AsyncMock()
+
+    await cmd_delete_playlist(msg, bot)
+
+    mock_conn.execute.assert_awaited_once()
+    # Check the query args
+    call_args = mock_conn.execute.call_args[0]
+    assert "DELETE FROM playlists WHERE session_id = $1 AND youtube_playlist_id = $2" in call_args[0]
+    assert call_args[1] == "sess123"
+    assert call_args[2] == "PL_TO_DELETE"
+    msg.reply.assert_awaited_once()
+    reply_text = msg.reply.call_args[0][0]
+    assert "Deleted 1 playlist(s) with YouTube ID 'PL_TO_DELETE'" in reply_text
+
+
+async def test_cmd_delete_playlist_not_found(mock_bot):
+    bot = mock_bot
+
+    class DummyConn:
+        pass
+
+    class DummyConnWithAcquire:
+        def __init__(self, conn):
+            self.conn = conn
+        async def __aenter__(self):
+            return self.conn
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    bot["db_pool"] = MagicMock()
+    mock_conn = MagicMock()
+    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
+    mock_conn.execute = AsyncMock(return_value="DELETE 0")
+    bot["db_pool"].acquire = lambda: DummyConnWithAcquire(mock_conn)
+
+    msg = MagicMock()
+    msg.chat = MagicMock()
+    msg.chat.id = 123
+    msg.text = "/delete UNKNOWN"
+    msg.reply = AsyncMock()
+
+    await cmd_delete_playlist(msg, bot)
+
+    msg.reply.assert_awaited_once()
+    reply_text = msg.reply.call_args[0][0]
+    assert "No playlist with YouTube ID 'UNKNOWN' found" in reply_text
+
+
+async def test_cmd_delete_playlist_missing_arg(mock_bot):
+    bot = mock_bot
+    bot["db_pool"] = MagicMock()
+
+    class DummyConn:
+        pass
+
+    class DummyACM:
+        async def __aenter__(self):
+            return DummyConn()
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    bot["db_pool"].acquire = lambda: DummyACM()
+
+    msg = MagicMock()
+    msg.chat = MagicMock()
+    msg.chat.id = 123
+    msg.text = "/delete"
+    msg.reply = AsyncMock()
+
+    await cmd_delete_playlist(msg, bot)
+
+    msg.reply.assert_awaited_once()
+    reply_text = msg.reply.call_args[0][0]
+    assert "Usage: /delete <youtube_playlist_id>" in reply_text
