@@ -459,6 +459,39 @@ async def compute_common_videos(conn: aiosqlite.Connection, session_id: str) -> 
     return await get_videos_by_youtube_ids(conn, list(common_ids))
 
 
+async def get_sessions_for_user(conn: aiosqlite.Connection, telegram_id: int) -> List[Session]:
+    """Get all sessions the user is a member of."""
+    cursor = await conn.execute(
+        """
+        SELECT DISTINCT s.* FROM sessions s
+        JOIN users u ON s.id = u.session_id
+        WHERE u.telegram_id = ?
+        ORDER BY s.created_at DESC
+        """,
+        (telegram_id,),
+    )
+    rows = await cursor.fetchall()
+    return [
+        Session(
+            id=row["id"],
+            chat_id=row["chat_id"],
+            short_code=row["short_code"],
+            created_at=str_to_dt(row["created_at"]),
+        )
+        for row in rows
+    ]
+
+
+async def user_is_member_of_session(conn: aiosqlite.Connection, telegram_id: int, session_id: str) -> bool:
+    """Check if user is a member of a session."""
+    cursor = await conn.execute(
+        "SELECT 1 FROM users WHERE session_id = ? AND telegram_id = ? LIMIT 1",
+        (session_id, telegram_id),
+    )
+    row = await cursor.fetchone()
+    return row is not None
+
+
 @asynccontextmanager
 async def transaction(conn: aiosqlite.Connection):
     """Async context manager for database transactions."""

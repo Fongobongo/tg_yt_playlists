@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import os
 import sys
+import traceback
 from pathlib import Path
 
-# Load .env
-env_path = Path(__file__).parent / '.env'
+# Immediate debug
+with open('/tmp/run_local_debug2.log', 'w') as f:
+    f.write('run_local.py started\n')
+    f.flush()
 if env_path.exists():
     for line in env_path.read_text().splitlines():
         if '=' in line and not line.strip().startswith('#'):
