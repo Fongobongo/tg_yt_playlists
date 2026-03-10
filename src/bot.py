@@ -21,6 +21,8 @@ from .database import (
     get_playlists_for_session,
     get_session_by_short_code,
     get_active_session_for_user,
+    get_sessions_for_user,
+    user_is_member_of_session,
     set_active_session_for_user,
     clear_active_session_for_user,
     delete_all_playlists_in_session,
@@ -54,7 +56,8 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
     """Return inline keyboard with main commands."""
     buttons = [
         [InlineKeyboardButton(text="📋 Session", callback_data="cmd:session"),
-         InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
+         InlineKeyboardButton(text="📚 My sessions", callback_data="cmd:list_sessions")],
+        [InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
         [InlineKeyboardButton(text="➕ Add playlist", callback_data="cmd:add_playlist"),
          InlineKeyboardButton(text="🗑 Clear playlists", callback_data="cmd:clear_playlists")],
         [InlineKeyboardButton(text="❌ Delete playlist", callback_data="cmd:delete"),
@@ -88,6 +91,7 @@ async def startup(bot: Bot) -> None:
         BotCommand(command="delete_playlist", description="Delete one playlist"),
         BotCommand(command="clear", description="End all sessions"),
         BotCommand(command="end_session", description="End current session (private)"),
+        BotCommand(command="list_sessions", description="List all your sessions (private)"),
         BotCommand(command="help", description="Help info"),
     ]
     try:
@@ -458,12 +462,8 @@ async def handle_playlist_url(message: Message, bot: Bot) -> None:
 async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
     """Handle inline button callbacks."""
     data = callback.data
-    if not data.startswith("cmd:"):
-        await callback.answer("Unknown action")
-        return
-    cmd = data.split(":", 1)[1]
 
-    # Wrap callback data into a message-like object with the correct user
+    # Wrapper for callback message to use the correct user
     class CallbackMessage:
         def __init__(self, callback, bot):
             self.chat = callback.message.chat
@@ -477,6 +477,42 @@ async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
     message = CallbackMessage(callback, bot)
 
     try:
+        # Handle session selection/deletion
+        if data.startswith("select_session:"):
+            session_id = data.split(":", 1)[1]
+            telegram_id = message.from_user.id
+            async with bot.db_pool.acquire() as conn:
+                if await user_is_member_of_session(conn, telegram_id, session_id):
+                    async with transaction(conn):
+                        await set_active_session_for_user(conn, telegram_id, session_id)
+                    await callback.answer("Session selected as active.")
+                else:
+                    await callback.answer("Access denied.", show_alert=True)
+            return
+        elif data.startswith("delete_session:"):
+            session_id = data.split(":", 1)[1]
+            telegram_id = message.from_user.id
+            async with bot.db_pool.acquire() as conn:
+                if not await user_is_member_of_session(conn, telegram_id, session_id):
+                    await callback.answer("Access denied.", show_alert=True)
+                    return
+                async with transaction(conn):
+                    # Delete playlists and videos
+                    await delete_all_playlists_in_session(conn, session_id)
+                    # Remove user memberships for this session
+                    await conn.execute("DELETE FROM users WHERE session_id = ?", (session_id,))
+                    # Delete session itself
+                    await conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+                    # Clear active pointer if this session was active
+                    await clear_active_session_for_user(conn, telegram_id)
+                await callback.answer("Session deleted.")
+            return
+
+        # Command-based callbacks
+        if not data.startswith("cmd:"):
+            await callback.answer("Unknown action")
+            return
+        cmd = data.split(":", 1)[1]
         if cmd == "session":
             await cmd_session(message, bot)
         elif cmd == "playlists":
@@ -491,6 +527,8 @@ async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
             await cmd_clear(message, bot)
         elif cmd == "end_session":
             await cmd_end_session(message, bot)
+        elif cmd == "list_sessions":
+            await cmd_list_sessions(message, bot)
         elif cmd == "help":
             await cmd_help(message, bot)
         else:
