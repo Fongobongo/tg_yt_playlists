@@ -6,7 +6,7 @@ from typing import List
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import BotCommand, Message
+from aiogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 
 from .config import Config, load_config, setup_logging
 from .database import (
@@ -48,6 +48,19 @@ def extract_playlist_url(text: str) -> str | None:
         playlist_id = match.group(1)
         return f"https://www.youtube.com/playlist?list={playlist_id}"
     return None
+
+
+def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
+    """Return inline keyboard with main commands."""
+    buttons = [
+        [InlineKeyboardButton(text="📋 Session", callback_data="cmd:session")],
+        [InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
+        [InlineKeyboardButton(text="🗑 Clear playlists", callback_data="cmd:clear_playlists")],
+        [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
+    ]
+    if is_private:
+        buttons.append([InlineKeyboardButton(text="🚪 Leave", callback_data="cmd:leave")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 async def startup(bot: Bot) -> None:
@@ -143,7 +156,7 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                 f"I'll then show videos that are common to all playlists in this session.\n"
                 f"Commands: /start, /session, /playlists, /add, /clear_playlists, /delete <youtube_playlist_id>, /clear, /help"
             )
-        await message.reply(reply_text)
+        await message.reply(reply_text, reply_markup=get_main_menu_keyboard(is_private))
 
 
 async def cmd_session(message: Message, bot: Bot) -> None:
@@ -377,7 +390,8 @@ async def cmd_help(message: Message, bot: Bot) -> None:
         "/leave — Leave current session (private only)\n"
         "/help — Show this help"
     )
-    await message.reply(help_text)
+    is_private = message.chat.type == "private"
+    await message.reply(help_text, reply_markup=get_main_menu_keyboard(is_private))
 
 
 async def handle_playlist_url(message: Message, bot: Bot) -> None:
@@ -432,6 +446,34 @@ async def handle_playlist_url(message: Message, bot: Bot) -> None:
         await message.reply(reply_text)
 
 
+async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
+    """Handle inline button callbacks."""
+    data = callback.data
+    if not data.startswith("cmd:"):
+        await callback.answer("Unknown action")
+        return
+    cmd = data.split(":", 1)[1]
+    message = callback.message
+    try:
+        if cmd == "session":
+            await cmd_session(message, bot)
+        elif cmd == "playlists":
+            await cmd_playlists(message, bot)
+        elif cmd == "clear_playlists":
+            await cmd_clear_playlists(message, bot)
+        elif cmd == "help":
+            await cmd_help(message, bot)
+        elif cmd == "leave":
+            await cmd_leave(message, bot)
+        else:
+            await callback.answer("Command not implemented")
+            return
+        await callback.answer()
+    except Exception as e:
+        logger.exception("Callback command failed")
+        await callback.answer(f"Error: {e}", show_alert=True)
+
+
 def create_dispatcher() -> Dispatcher:
     """Create and configure the Aiogram Dispatcher."""
     dp = Dispatcher()
@@ -449,6 +491,7 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_add, Command("add"))
     dp.message.register(cmd_help, Command("help"))
     dp.message.register(handle_playlist_url)
+    dp.callback_query.register(handle_callback)
 
     return dp
 
