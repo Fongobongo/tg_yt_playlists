@@ -71,6 +71,7 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
 
 async def startup(bot: Bot) -> None:
     """Initialize database connection pool and ensure tables exist."""
+    print("STARTUP CALLED", file=sys.stderr)
     config: Config = bot.config
     pool = await create_pool(config.database_url)
     await create_tables(pool)
@@ -81,25 +82,15 @@ async def startup(bot: Bot) -> None:
     except Exception as e:
         logger.warning("Failed to fetch bot info: %s", e)
         bot.my_username = None
-    # Register bot commands for Telegram UI
-    commands = [
-        BotCommand(command="start", description="Create/join a session"),
-        BotCommand(command="session", description="Show current session"),
-        BotCommand(command="playlists", description="List playlists"),
-        BotCommand(command="add_playlist", description="Add playlist by URL"),
-        BotCommand(command="clear_playlists", description="Delete all playlists"),
-        BotCommand(command="delete_playlist", description="Delete one playlist"),
-        BotCommand(command="clear", description="End all sessions"),
-        BotCommand(command="end_session", description="End current session (private)"),
-        BotCommand(command="list_sessions", description="List all your sessions (private)"),
-        BotCommand(command="help", description="Help info"),
-    ]
-    try:
-        await bot.set_my_commands(commands)
-        logger.info("Bot commands registered")
-    except Exception as e:
-        logger.warning("Failed to set bot commands: %s", e)
-    logger.info("Bot started and database initialized")
+    # Temporarily disable command registration to debug
+    # commands = [...]
+    # try:
+    #     await bot.set_my_commands(commands)
+    #     print("Bot commands registered", file=sys.stderr)
+    # except Exception as e:
+    #     print(f"Failed to set commands: {e}", file=sys.stderr)
+    #     logger.warning("Failed to set bot commands: %s", e)
+    print("Bot started and database initialized", file=sys.stderr)
 
 
 async def shutdown(bot: Bot) -> None:
@@ -571,12 +562,16 @@ def create_dispatcher() -> Dispatcher:
 
 async def main() -> None:
     """Application entry point."""
+    import sys
+    print("BOT STARTING", file=sys.stderr)
     config = load_config()
     setup_logging(config.log_level)
+    print(f"Config loaded: TELEGRAM_BOT_TOKEN={config.telegram_bot_token!r}, DATABASE_URL={config.database_url!r}", file=sys.stderr)
     bot = Bot(token=config.telegram_bot_token)
     bot.config = config
     bot.db_pool = None
     dp = create_dispatcher()
+    print("Starting polling...", file=sys.stderr)
     try:
         await dp.start_polling(bot)
     finally:
@@ -585,4 +580,11 @@ async def main() -> None:
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    import traceback
+    import sys
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print("FATAL ERROR:", e, file=sys.stderr)
+        traceback.print_exc()
+        raise

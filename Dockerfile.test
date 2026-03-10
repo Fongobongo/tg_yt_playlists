@@ -1,0 +1,4 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY src/database.py /app/src/database.py
+CMD ["cat", "/app/src/database.py"]

@@ -10,6 +10,16 @@ import aiosqlite
 
 from .models import Playlist, Session, User, Video
 
+
+def dt_to_str(dt: datetime) -> str:
+    """Convert datetime to ISO string for storage."""
+    return dt.isoformat(timespec="seconds")
+
+
+def str_to_dt(s: str) -> datetime:
+    """Parse ISO string from storage to datetime."""
+    return datetime.fromisoformat(s)
+
 logger = logging.getLogger(__name__)
 
 # SQL for table creation (SQLite)
