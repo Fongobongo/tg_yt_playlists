@@ -53,9 +53,12 @@ def extract_playlist_url(text: str) -> str | None:
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
     """Return inline keyboard with main commands."""
     buttons = [
-        [InlineKeyboardButton(text="📋 Session", callback_data="cmd:session")],
-        [InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
-        [InlineKeyboardButton(text="🗑 Clear playlists", callback_data="cmd:clear_playlists")],
+        [InlineKeyboardButton(text="📋 Session", callback_data="cmd:session"),
+         InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
+        [InlineKeyboardButton(text="➕ Add", callback_data="cmd:add"),
+         InlineKeyboardButton(text="🗑 Clear playlists", callback_data="cmd:clear_playlists")],
+        [InlineKeyboardButton(text="❌ Delete", callback_data="cmd:delete"),
+         InlineKeyboardButton(text="💥 Clear all", callback_data="cmd:clear")],
         [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
     ]
     if is_private:
@@ -459,12 +462,18 @@ async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
             await cmd_session(message, bot)
         elif cmd == "playlists":
             await cmd_playlists(message, bot)
+        elif cmd == "add":
+            await cmd_add(message, bot)
         elif cmd == "clear_playlists":
             await cmd_clear_playlists(message, bot)
-        elif cmd == "help":
-            await cmd_help(message, bot)
+        elif cmd == "delete":
+            await cmd_delete_playlist(message, bot)
+        elif cmd == "clear":
+            await cmd_clear(message, bot)
         elif cmd == "leave":
             await cmd_leave(message, bot)
+        elif cmd == "help":
+            await cmd_help(message, bot)
         else:
             await callback.answer("Command not implemented")
             return
