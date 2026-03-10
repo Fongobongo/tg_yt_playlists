@@ -280,6 +280,12 @@ async def cmd_end_session(message: Message, bot: Bot) -> None:
 
 async def cmd_delete_playlist(message: Message, bot: Bot) -> None:
     """Delete a playlist by its YouTube playlist ID from the current session."""
+    if not message.text:
+        await message.reply(
+            "Usage: /delete_playlist <youtube_playlist_id>\n"
+            "You can find the YouTube playlist ID in the /playlists list."
+        )
+        return
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
@@ -456,7 +462,20 @@ async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer("Unknown action")
         return
     cmd = data.split(":", 1)[1]
-    message = callback.message
+
+    # Wrap callback data into a message-like object with the correct user
+    class CallbackMessage:
+        def __init__(self, callback, bot):
+            self.chat = callback.message.chat
+            self.from_user = callback.from_user
+            self.text = None
+            self._bot = bot
+            self._message = callback.message
+        async def reply(self, text, **kwargs):
+            return await self._message.reply(text, **kwargs)
+
+    message = CallbackMessage(callback, bot)
+
     try:
         if cmd == "session":
             await cmd_session(message, bot)
