@@ -62,7 +62,7 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
     ]
     if is_private:
-        buttons.append([InlineKeyboardButton(text="🚪 Leave", callback_data="cmd:leave")])
+        buttons.append([InlineKeyboardButton(text="🛑 End session", callback_data="cmd:end_session")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -85,9 +85,9 @@ async def startup(bot: Bot) -> None:
         BotCommand(command="playlists", description="List playlists"),
         BotCommand(command="add", description="Add playlist by URL"),
         BotCommand(command="clear_playlists", description="Delete all playlists"),
-        BotCommand(command="delete", description="Delete one playlist"),
+        BotCommand(command="delete_playlist", description="Delete one playlist"),
         BotCommand(command="clear", description="Delete session entirely"),
-        BotCommand(command="leave", description="Leave session (private only)"),
+        BotCommand(command="end_session", description="End current session (private)"),
         BotCommand(command="help", description="Help info"),
     ]
     try:
@@ -144,12 +144,12 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                 reply_text = (
                     f"Welcome! This is your private session (ID: {session.id}).\n"
                     f"Share this link to let others join your session:\n{invite_link}\n\n"
-                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete <youtube_playlist_id>, /clear, /leave, /help"
+                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear, /end_session, /help"
                 )
             else:
                 reply_text = (
                     f"Welcome! This is your private session (ID: {session.id}).\n"
-                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete <youtube_playlist_id>, /clear, /leave, /help"
+                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear, /end_session, /help"
                 )
         else:
             reply_text = (
@@ -157,7 +157,7 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                 f"This group (ID: {chat_id}) has its own session.\n"
                 f"Send me a YouTube playlist URL (or use /add) and I'll add it to the session.\n"
                 f"I'll then show videos that are common to all playlists in this session.\n"
-                f"Commands: /start, /session, /playlists, /add, /clear_playlists, /delete <youtube_playlist_id>, /clear, /help"
+                f"Commands: /start, /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear, /help"
             )
         await message.reply(reply_text, reply_markup=get_main_menu_keyboard(is_private))
 
@@ -266,16 +266,16 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
         await message.reply("Session data cleared. You can start fresh now.")
 
 
-async def cmd_leave(message: Message, bot: Bot) -> None:
-    """Leave the current active session (private chats only)."""
+async def cmd_end_session(message: Message, bot: Bot) -> None:
+    """End current active session (private chats only)."""
     if message.chat.type != "private":
-        await message.reply("The /leave command works only in private chats.")
+        await message.reply("The /end_session command works only in private chats.")
         return
     telegram_id = message.from_user.id
     async with bot.db_pool.acquire() as conn:
         async with transaction(conn):
             await clear_active_session_for_user(conn, telegram_id)
-    await message.reply("You have left your current session. Use /start to create a new session or join another with a code.")
+    await message.reply("You have ended the current session. Use /start to create a new session or join another with a code.")
 
 
 async def cmd_delete_playlist(message: Message, bot: Bot) -> None:
@@ -388,9 +388,9 @@ async def cmd_help(message: Message, bot: Bot) -> None:
         "/playlists — List playlists in this session\n"
         "/add <url> — Add a YouTube playlist\n"
         "/clear_playlists — Delete all playlists (keeps session)\n"
-        "/delete <youtube_id> — Delete one playlist\n"
+        "/delete_playlist <youtube_id> — Delete one playlist\n"
         "/clear — Delete the entire session\n"
-        "/leave — Leave current session (private only)\n"
+        "/end_session — End current session (private only)\n"
         "/help — Show this help"
     )
     is_private = message.chat.type == "private"
@@ -470,8 +470,8 @@ async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
             await cmd_delete_playlist(message, bot)
         elif cmd == "clear":
             await cmd_clear(message, bot)
-        elif cmd == "leave":
-            await cmd_leave(message, bot)
+        elif cmd == "end_session":
+            await cmd_end_session(message, bot)
         elif cmd == "help":
             await cmd_help(message, bot)
         else:
@@ -493,10 +493,17 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_start, Command("start"))
     dp.message.register(cmd_session, Command("session"))
     dp.message.register(cmd_playlists, Command("playlists"))
-    dp.message.register(cmd_clear_playlists, Command("clear_playlists"))
-    dp.message.register(cmd_delete_playlist, Command("delete"))
+    dp.message.register(cmd_delete_playlist, Command("delete_playlist"))
     dp.message.register(cmd_clear, Command("clear"))
-    dp.message.register(cmd_leave, Command("leave"))
+    dp.message.register(cmd_end_session, Command("end_session"))
+    # Command handlers
+    dp.message.register(cmd_start, Command("start"))
+    dp.message.register(cmd_session, Command("session"))
+    dp.message.register(cmd_playlists, Command("playlists"))
+    dp.message.register(cmd_clear_playlists, Command("clear_playlists"))
+    dp.message.register(cmd_delete_playlist, Command("delete_playlist"))
+    dp.message.register(cmd_clear, Command("clear"))
+    dp.message.register(cmd_end_session, Command("end_session"))
     dp.message.register(cmd_add, Command("add"))
     dp.message.register(cmd_help, Command("help"))
     dp.message.register(handle_playlist_url)
