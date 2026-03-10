@@ -1,6 +1,4 @@
 aiogram==3.11.0
-asyncpg==0.30.0
+aiosqlite==0.20.0
 yt-dlp==2025.03.27
 python-dotenv==1.0.1
-pytest==8.2.2
-pytest-asyncio==0.24.0

@@ -12,3 +12,8 @@ venv/
 .DS_Store
 .vscode/
 .idea/
+data/
+*.db
+run_bot.py
+test.py
+requirements-dev.txt
