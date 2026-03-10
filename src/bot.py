@@ -57,8 +57,8 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
         [InlineKeyboardButton(text="➕ Add", callback_data="cmd:add"),
          InlineKeyboardButton(text="🗑 Clear playlists", callback_data="cmd:clear_playlists")],
-        [InlineKeyboardButton(text="❌ Delete", callback_data="cmd:delete"),
-         InlineKeyboardButton(text="💥 Clear all", callback_data="cmd:clear")],
+        [InlineKeyboardButton(text="❌ Delete playlist", callback_data="cmd:delete"),
+         InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear")],
         [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
     ]
     if is_private:
@@ -144,12 +144,12 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                 reply_text = (
                     f"Welcome! This is your private session (ID: {session.id}).\n"
                     f"Share this link to let others join your session:\n{invite_link}\n\n"
-                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear, /end_session, /help"
+                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /end_session, /help"
                 )
             else:
                 reply_text = (
                     f"Welcome! This is your private session (ID: {session.id}).\n"
-                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear, /end_session, /help"
+                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /end_session, /help"
                 )
         else:
             reply_text = (
@@ -157,7 +157,7 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                 f"This group (ID: {chat_id}) has its own session.\n"
                 f"Send me a YouTube playlist URL (or use /add) and I'll add it to the session.\n"
                 f"I'll then show videos that are common to all playlists in this session.\n"
-                f"Commands: /start, /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear, /help"
+                f"Commands: /start, /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /help"
             )
         await message.reply(reply_text, reply_markup=get_main_menu_keyboard(is_private))
 
@@ -283,7 +283,7 @@ async def cmd_delete_playlist(message: Message, bot: Bot) -> None:
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
-            "Usage: /delete <youtube_playlist_id>\n"
+            "Usage: /delete_playlist <youtube_playlist_id>\n"
             "You can find the YouTube playlist ID in the /playlists list."
         )
         return
@@ -389,7 +389,7 @@ async def cmd_help(message: Message, bot: Bot) -> None:
         "/add <url> — Add a YouTube playlist\n"
         "/clear_playlists — Delete all playlists (keeps session)\n"
         "/delete_playlist <youtube_id> — Delete one playlist\n"
-        "/clear — Delete the entire session\n"
+        "/clear — End all sessions (delete entire session)\n"
         "/end_session — End current session (private only)\n"
         "/help — Show this help"
     )
