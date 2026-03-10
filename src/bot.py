@@ -55,7 +55,7 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text="📋 Session", callback_data="cmd:session"),
          InlineKeyboardButton(text="📚 Playlists", callback_data="cmd:playlists")],
-        [InlineKeyboardButton(text="➕ Add", callback_data="cmd:add"),
+        [InlineKeyboardButton(text="➕ Add playlist", callback_data="cmd:add_playlist"),
          InlineKeyboardButton(text="🗑 Clear playlists", callback_data="cmd:clear_playlists")],
         [InlineKeyboardButton(text="❌ Delete playlist", callback_data="cmd:delete"),
          InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear")],
@@ -83,10 +83,10 @@ async def startup(bot: Bot) -> None:
         BotCommand(command="start", description="Create/join a session"),
         BotCommand(command="session", description="Show current session"),
         BotCommand(command="playlists", description="List playlists"),
-        BotCommand(command="add", description="Add playlist by URL"),
+        BotCommand(command="add_playlist", description="Add playlist by URL"),
         BotCommand(command="clear_playlists", description="Delete all playlists"),
         BotCommand(command="delete_playlist", description="Delete one playlist"),
-        BotCommand(command="clear", description="Delete session entirely"),
+        BotCommand(command="clear", description="End all sessions"),
         BotCommand(command="end_session", description="End current session (private)"),
         BotCommand(command="help", description="Help info"),
     ]
@@ -144,20 +144,20 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                 reply_text = (
                     f"Welcome! This is your private session (ID: {session.id}).\n"
                     f"Share this link to let others join your session:\n{invite_link}\n\n"
-                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /end_session, /help"
+                    f"Commands: /session, /playlists, /add_playlist, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /end_session, /help"
                 )
             else:
                 reply_text = (
                     f"Welcome! This is your private session (ID: {session.id}).\n"
-                    f"Commands: /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /end_session, /help"
+                    f"Commands: /session, /playlists, /add_playlist, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /end_session, /help"
                 )
         else:
             reply_text = (
                 f"Hello! I'm the YouTube Playlist Intersection Bot.\n"
                 f"This group (ID: {chat_id}) has its own session.\n"
-                f"Send me a YouTube playlist URL (or use /add) and I'll add it to the session.\n"
+                f"Send me a YouTube playlist URL (or use /add_playlist) and I'll add it to the session.\n"
                 f"I'll then show videos that are common to all playlists in this session.\n"
-                f"Commands: /start, /session, /playlists, /add, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /help"
+                f"Commands: /start, /session, /playlists, /add_playlist, /clear_playlists, /delete_playlist <youtube_id>, /clear (end all), /help"
             )
         await message.reply(reply_text, reply_markup=get_main_menu_keyboard(is_private))
 
@@ -462,8 +462,8 @@ async def handle_callback(callback: CallbackQuery, bot: Bot) -> None:
             await cmd_session(message, bot)
         elif cmd == "playlists":
             await cmd_playlists(message, bot)
-        elif cmd == "add":
-            await cmd_add(message, bot)
+        elif cmd == "add_playlist":
+            await cmd_add_playlist(message, bot)
         elif cmd == "clear_playlists":
             await cmd_clear_playlists(message, bot)
         elif cmd == "delete":
