@@ -1,6 +1,7 @@
 """Telegram bot entry point and handlers."""
 
 import logging
+import re
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
@@ -50,17 +51,23 @@ from .youtube import fetch_playlist_info, normalize_upaste_url
 
 logger = logging.getLogger(__name__)
 
+UPASTE_URL_REGEX = re.compile(
+    r"(?:https?://)?(?:www\.)?upaste\.de/(?:(?:raw/)?[A-Za-z0-9]+)"
+)
+
 PLAYLIST_EXPORT_INSTRUCTIONS = (
     "How to export a playlist:\n"
     "1. Open the playlist in YouTube, for example Watch Later: "
     "https://www.youtube.com/playlist?list=WL\n"
-    "2. In the browser extension MultiSelect for YouTube, click the blue checkmark in the top right.\n"
-    "3. In the popup at the bottom, open the three-dot menu and choose \"Export playlist\".\n"
-    "4. Open https://upaste.de/\n"
-    "5. Next to \"Upload text file:\", choose the saved JSON file.\n"
-    "6. Click the Upload button.\n"
-    "7. Copy the URL of the opened upaste page.\n"
-    "8. Send that upaste URL here.\n\n"
+    "2. Install/open the browser extension MultiSelect for YouTube: "
+    "https://chromewebstore.google.com/detail/multiselect-for-youtube/gpgbiinpmelaihndlegbgfkmnpofgfei\n"
+    "3. In the extension, click the blue checkmark in the top right.\n"
+    "4. In the popup at the bottom, open the three-dot menu and choose \"Export playlist\".\n"
+    "5. Open https://upaste.de/\n"
+    "6. Next to \"Upload text file:\", choose the saved JSON file.\n"
+    "7. Click the Upload button.\n"
+    "8. Copy the URL of the opened upaste page.\n"
+    "9. Send that upaste URL here.\n\n"
     "Accepted examples:\n"
     "https://upaste.de/g3h\n"
     "https://upaste.de/raw/g3h"
@@ -96,7 +103,16 @@ def resolve_actor(message: Message, actor: User | None = None) -> User:
 
 def extract_playlist_url(text: str) -> str | None:
     """Extract a supported playlist source URL from text."""
-    return normalize_upaste_url(text)
+    normalized = normalize_upaste_url(text)
+    if normalized is not None:
+        return normalized
+    match = UPASTE_URL_REGEX.search(text)
+    if not match:
+        return None
+    candidate = match.group(0)
+    if not candidate.startswith(("http://", "https://")):
+        candidate = f"https://{candidate}"
+    return normalize_upaste_url(candidate)
 
 
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
@@ -150,6 +166,7 @@ def get_persistent_menu_keyboard(is_private: bool) -> ReplyKeyboardMarkup:
         keyboard=rows,
         resize_keyboard=True,
         is_persistent=True,
+        one_time_keyboard=False,
         input_field_placeholder="Choose an action",
     )
 
@@ -243,7 +260,10 @@ async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: U
         playlist_info = await fetch_playlist_info(url)
     except Exception as exc:
         logger.exception("Failed to fetch playlist from %s", url)
-        await message.reply(f"Failed to fetch playlist: {exc}")
+        await message.reply(
+            f"Failed to fetch playlist: {exc}",
+            reply_markup=get_persistent_menu_keyboard(is_private),
+        )
         return
 
     async with bot.db_pool.acquire() as conn:
