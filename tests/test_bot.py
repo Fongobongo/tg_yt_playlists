@@ -27,6 +27,7 @@ from src.bot import (
     notify_session_members_about_new_playlist,
     notify_session_members_about_common_videos,
     prompt_for_playlist_url,
+    send_google_auth_prompt,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -191,6 +192,53 @@ async def test_handle_idle_text_joins_session_from_bare_code(mock_bot):
         await handle_idle_text(message, mock_bot)
 
     join_session.assert_awaited_once_with(message, mock_bot, "85fb5b2b7d50")
+
+
+async def test_send_google_auth_prompt_requires_private_chat(mock_bot):
+    message = make_message("/google_auth", chat_type="group")
+    mock_bot.config = SimpleNamespace(
+        google_client_id="cid",
+        google_client_secret="secret",
+        webhook_base_url="https://example.com",
+        webhook_secret="signing",
+    )
+
+    await send_google_auth_prompt(message, mock_bot)
+
+    message.reply.assert_awaited_once()
+    assert "only in private chat" in message.reply.call_args[0][0]
+
+
+async def test_send_google_auth_prompt_requires_config(mock_bot):
+    message = make_message("/google_auth", chat_type="private")
+    mock_bot.config = SimpleNamespace(
+        google_client_id=None,
+        google_client_secret=None,
+        webhook_base_url="https://example.com",
+        webhook_secret="signing",
+    )
+
+    await send_google_auth_prompt(message, mock_bot)
+
+    message.reply.assert_awaited_once()
+    assert "not configured yet" in message.reply.call_args[0][0]
+
+
+async def test_send_google_auth_prompt_builds_auth_button(mock_bot):
+    message = make_message("/google_auth", chat_type="private")
+    mock_bot.config = SimpleNamespace(
+        google_client_id="cid",
+        google_client_secret="secret",
+        webhook_base_url="https://example.com",
+        webhook_secret="signing",
+    )
+
+    await send_google_auth_prompt(message, mock_bot)
+
+    message.reply.assert_awaited_once()
+    reply_markup = message.reply.call_args.kwargs["reply_markup"]
+    assert reply_markup.inline_keyboard[0][0].text == "Open Google auth"
+    assert "accounts.google.com" in reply_markup.inline_keyboard[0][0].url
 
 
 async def test_notify_session_members_about_common_videos(mock_bot):
@@ -482,6 +530,7 @@ async def test_private_keyboard_uses_icon_labels():
     assert "🧭 Session" in texts
     assert "🗂 My sessions" in texts
     assert "➕ Add playlist" in texts
+    assert "🔐 Google auth" in texts
 
 
 async def test_persistent_keyboard_is_available():
@@ -489,6 +538,7 @@ async def test_persistent_keyboard_is_available():
     texts = [button.text for row in keyboard.keyboard for button in row]
     assert MENU_LABELS["session"] in texts
     assert MENU_LABELS["list_sessions"] in texts
+    assert MENU_LABELS["google_auth"] in texts
     assert keyboard.is_persistent is True
 
 

@@ -27,6 +27,8 @@ TELEGRAM_BOT_TOKEN=your_bot_token
 DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[URL_ENCODED_PASSWORD]@aws-1-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
 WEBHOOK_BASE_URL=https://your-render-app.onrender.com
 WEBHOOK_SECRET=long_random_secret
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
 WEBHOOK_PATH=/telegram/webhook
 PORT=8080
 LOG_LEVEL=INFO
@@ -39,6 +41,7 @@ Notes:
 - The connection pool is async and uses `asyncpg`.
 - `WEBHOOK_BASE_URL` must be the public HTTPS origin of your deployed app.
 - Telegram will deliver updates to `WEBHOOK_BASE_URL + WEBHOOK_PATH`.
+- For the test Google auth button, add an OAuth client in Google Cloud and set the redirect URI to `https://<your-app>/auth/google/callback`.
 
 ## Running
 
@@ -68,8 +71,8 @@ docker compose up --build
 - `/start <code>` joins a private session by invite code.
 - `/add_playlist <url>` adds a playlist export immediately.
 - `/common` or the `Common videos` button shows the current intersection for the session.
+- `/google_auth` or the `Google auth` button opens a test Google OAuth flow and sends the first page of the user's YouTube playlists back to Telegram.
 - `Add playlist` button switches the bot into “waiting for URL” mode; the next `upaste.de` link is processed.
-- `Delete playlist` button switches the bot into “waiting for playlist ID” mode; the next message is treated as the playlist ID to remove.
 - Plain text messages with playlist export links are ignored unless the bot is explicitly waiting after `Add playlist`.
 
 ## Playlist Source
@@ -93,6 +96,7 @@ Set these environment variables in Render:
 - `DATABASE_URL`
 - `WEBHOOK_BASE_URL=https://<your-app>.onrender.com`
 - `WEBHOOK_SECRET`
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` if you want the test Google auth button to work
 - `WEBHOOK_PATH=/telegram/webhook`
 - `PORT=8080`
 
@@ -117,8 +121,8 @@ Operational caveat:
 - `/playlists`
 - `/add_playlist <url>`
 - `/common`
+- `/google_auth`
 - `/clear_playlists`
-- `/delete_playlist <youtube_playlist_id>`
 - `/clear`
 - `/end_session`
 - `/list_sessions`

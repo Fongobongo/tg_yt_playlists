@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -16,6 +17,8 @@ class Config:
     database_url: str
     webhook_base_url: str
     webhook_secret: str
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
     webhook_path: str = "/telegram/webhook"
     port: int = 8080
     log_level: str = "INFO"
@@ -33,6 +36,8 @@ def load_config() -> Config:
     database_url = os.getenv("DATABASE_URL")
     webhook_base_url = os.getenv("WEBHOOK_BASE_URL")
     webhook_secret = os.getenv("WEBHOOK_SECRET")
+    google_client_id = os.getenv("GOOGLE_CLIENT_ID")
+    google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     webhook_path = os.getenv("WEBHOOK_PATH", "/telegram/webhook")
     port_raw = os.getenv("PORT", "8080")
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -71,6 +76,8 @@ def load_config() -> Config:
         database_url=database_url,
         webhook_base_url=webhook_base_url.rstrip("/"),
         webhook_secret=webhook_secret,
+        google_client_id=google_client_id,
+        google_client_secret=google_client_secret,
         webhook_path=webhook_path,
         port=port,
         log_level=log_level,

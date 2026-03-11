@@ -48,6 +48,13 @@ from .database import (
     transaction,
     user_is_member_of_session,
 )
+from .google_oauth import (
+    build_google_oauth_url,
+    exchange_google_code_for_token,
+    fetch_youtube_playlists,
+    google_oauth_enabled,
+    verify_google_state,
+)
 from .intersection import compute_common_videos
 from .youtube import fetch_playlist_info, normalize_upaste_url
 
@@ -82,6 +89,7 @@ MENU_LABELS = {
     "list_sessions": "🗂 My sessions",
     "playlists": "🎵 Playlists",
     "common": "🎬 Common videos",
+    "google_auth": "🔐 Google auth",
     "add_playlist": "➕ Add playlist",
     "clear_playlists": "🧹 Clear playlists",
     "clear": "💥 End all sessions",
@@ -171,6 +179,7 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
         buttons.append(
             [
                 InlineKeyboardButton(text="🚪 End session", callback_data="cmd:end_session"),
+                InlineKeyboardButton(text="🔐 Google auth", callback_data="cmd:google_auth"),
                 InlineKeyboardButton(text="❓ Help", callback_data="cmd:help"),
             ]
         )
@@ -196,6 +205,7 @@ def get_persistent_menu_keyboard(is_private: bool) -> ReplyKeyboardMarkup:
         rows.append(
             [
                 KeyboardButton(text=MENU_LABELS["end_session"]),
+                KeyboardButton(text=MENU_LABELS["google_auth"]),
                 KeyboardButton(text=MENU_LABELS["help"]),
             ]
         )
@@ -302,6 +312,7 @@ async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
         BotCommand(command="clear", description="💥 Delete the current session"),
         BotCommand(command="end_session", description="🚪 Leave the current private session"),
         BotCommand(command="list_sessions", description="🗂 List your sessions"),
+        BotCommand(command="google_auth", description="🔐 Test Google auth"),
         BotCommand(command="help", description="❓ Show help"),
     ]
     try:
@@ -778,6 +789,32 @@ async def cmd_end_session(message: Message, bot: Bot, actor: User | None = None)
     )
 
 
+async def send_google_auth_prompt(message: Message, bot: Bot, actor: User | None = None) -> None:
+    """Send a test Google OAuth link to the user."""
+    if message.chat.type != "private":
+        await message.reply("Google authorization works only in private chat with the bot.")
+        return
+
+    if not google_oauth_enabled(bot.config):
+        await message.reply(
+            "Google OAuth is not configured yet on this deployment.",
+            reply_markup=get_persistent_menu_keyboard(True),
+        )
+        return
+
+    auth_url = build_google_oauth_url(bot.config, resolve_actor(message, actor).id)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Open Google auth", url=auth_url)],
+        ]
+    )
+    await message.reply(
+        "Test Google authorization. After consent, the bot will try to read your YouTube playlists.",
+        reply_markup=keyboard,
+        disable_web_page_preview=True,
+    )
+
+
 async def cmd_add_playlist(
     message: Message, bot: Bot, state: FSMContext, actor: User | None = None
 ) -> None:
@@ -864,6 +901,7 @@ async def cmd_help(message: Message) -> None:
         "/clear - Delete the current session\n"
         "/end_session - Leave the current private session\n"
         "/list_sessions - List your sessions\n"
+        "/google_auth - Test Google OAuth and list your YouTube playlists\n"
         "/help - Show this help\n\n"
         f"{PLAYLIST_EXPORT_INSTRUCTIONS}\n\n"
         "To switch to another session, open /list_sessions and press the corresponding Use button."
@@ -932,6 +970,8 @@ async def handle_callback(callback: CallbackQuery, bot: Bot, state: FSMContext) 
             await cmd_end_session(message, bot, actor=callback.from_user)
         elif command == "list_sessions":
             await cmd_list_sessions(message, bot, actor=callback.from_user)
+        elif command == "google_auth":
+            await send_google_auth_prompt(message, bot, actor=callback.from_user)
         elif command == "help":
             await cmd_help(message)
         else:
@@ -959,6 +999,7 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_clear, Command("clear"))
     dp.message.register(cmd_end_session, Command("end_session"))
     dp.message.register(cmd_add_playlist, Command("add_playlist"))
+    dp.message.register(send_google_auth_prompt, Command("google_auth"))
     dp.message.register(cmd_help, Command("help"))
     dp.message.register(cmd_list_sessions, Command("list_sessions"))
     dp.message.register(handle_add_playlist_input, StateFilter(AddPlaylistFlow.waiting_for_url))
@@ -971,6 +1012,7 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_clear_playlists, F.text == MENU_LABELS["clear_playlists"])
     dp.message.register(cmd_clear, F.text == MENU_LABELS["clear"])
     dp.message.register(cmd_end_session, F.text == MENU_LABELS["end_session"])
+    dp.message.register(send_google_auth_prompt, F.text == MENU_LABELS["google_auth"])
     dp.message.register(cmd_help, F.text == MENU_LABELS["help"])
     dp.message.register(handle_idle_text, StateFilter(None), F.text)
     dp.callback_query.register(handle_callback)
@@ -983,10 +1025,65 @@ async def healthcheck(_: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+async def google_auth_callback(request: web.Request) -> web.Response:
+    """Handle the Google OAuth redirect and report results back to Telegram."""
+    bot: Bot = request.app["bot"]
+    config: Config = bot.config
+    code = request.query.get("code")
+    state = request.query.get("state")
+    error = request.query.get("error")
+
+    if not state:
+        return web.Response(status=400, text="Missing OAuth state.")
+
+    try:
+        telegram_id = verify_google_state(config.webhook_secret, state)
+    except ValueError as exc:
+        return web.Response(status=400, text=str(exc))
+
+    if error:
+        await bot.send_message(chat_id=telegram_id, text=f"Google authorization failed: {error}")
+        return web.Response(text="Google authorization failed. Return to Telegram.")
+
+    if not code:
+        await bot.send_message(chat_id=telegram_id, text="Google authorization failed: missing code.")
+        return web.Response(status=400, text="Missing OAuth code.")
+
+    try:
+        token_payload = await exchange_google_code_for_token(config, code)
+        access_token = token_payload["access_token"]
+        total, playlists = await fetch_youtube_playlists(access_token)
+        if playlists:
+            lines = [
+                f"{index}. {playlist.title} ({playlist.video_count} videos)"
+                for index, playlist in enumerate(playlists, start=1)
+            ]
+            text = f"Google auth succeeded.\nYouTube playlists found: {total}\n\n" + "\n".join(lines)
+        else:
+            text = "Google auth succeeded, but no YouTube playlists were returned."
+        await bot.send_message(
+            chat_id=telegram_id,
+            text=text,
+            reply_markup=get_persistent_menu_keyboard(True),
+            disable_web_page_preview=True,
+        )
+        return web.Response(text="Google authorization completed. Return to Telegram.")
+    except Exception:
+        logger.exception("Google OAuth callback failed")
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Google authorization failed while reading YouTube playlists.",
+            reply_markup=get_persistent_menu_keyboard(True),
+        )
+        return web.Response(status=500, text="Google authorization failed.")
+
+
 def build_app(bot: Bot, dp: Dispatcher, config: Config) -> web.Application:
     """Build the aiohttp application used for Telegram webhooks."""
     app = web.Application()
+    app["bot"] = bot
     app.router.add_get("/healthz", healthcheck)
+    app.router.add_get("/auth/google/callback", google_auth_callback)
 
     webhook_handler = SimpleRequestHandler(
         dispatcher=dp,
