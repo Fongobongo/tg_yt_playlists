@@ -2,7 +2,7 @@
 
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -13,7 +13,9 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     Message,
+    ReplyKeyboardMarkup,
     User,
 )
 
@@ -47,6 +49,35 @@ from .intersection import compute_common_videos
 from .youtube import fetch_playlist_info, normalize_upaste_url
 
 logger = logging.getLogger(__name__)
+
+PLAYLIST_EXPORT_INSTRUCTIONS = (
+    "How to export a playlist:\n"
+    "1. Open the playlist in YouTube, for example Watch Later: "
+    "https://www.youtube.com/playlist?list=WL\n"
+    "2. In the browser extension MultiSelect for YouTube, click the blue checkmark in the top right.\n"
+    "3. In the popup at the bottom, open the three-dot menu and choose \"Export playlist\".\n"
+    "4. Open https://upaste.de/\n"
+    "5. Next to \"Upload text file:\", choose the saved JSON file.\n"
+    "6. Click the Upload button.\n"
+    "7. Copy the URL of the opened upaste page.\n"
+    "8. Send that upaste URL here.\n\n"
+    "Accepted examples:\n"
+    "https://upaste.de/g3h\n"
+    "https://upaste.de/raw/g3h"
+)
+
+MENU_LABELS = {
+    "session": "🧭 Session",
+    "list_sessions": "🗂 My sessions",
+    "playlists": "🎵 Playlists",
+    "common": "🎬 Common videos",
+    "add_playlist": "➕ Add playlist",
+    "clear_playlists": "🧹 Clear playlists",
+    "delete": "🗑 Delete playlist",
+    "clear": "💥 End all sessions",
+    "help": "❓ Help",
+    "end_session": "🚪 End session",
+}
 
 
 class AddPlaylistFlow(StatesGroup):
@@ -91,6 +122,36 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
     if is_private:
         buttons.append([InlineKeyboardButton(text="🚪 End session", callback_data="cmd:end_session")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_persistent_menu_keyboard(is_private: bool) -> ReplyKeyboardMarkup:
+    """Return a persistent reply keyboard that stays visible in the chat."""
+    rows = [[KeyboardButton(text=MENU_LABELS["session"])]]
+    if is_private:
+        rows[0].append(KeyboardButton(text=MENU_LABELS["list_sessions"]))
+    rows.extend(
+        [
+            [KeyboardButton(text=MENU_LABELS["playlists"])],
+            [KeyboardButton(text=MENU_LABELS["common"])],
+            [
+                KeyboardButton(text=MENU_LABELS["add_playlist"]),
+                KeyboardButton(text=MENU_LABELS["clear_playlists"]),
+            ],
+            [
+                KeyboardButton(text=MENU_LABELS["delete"]),
+                KeyboardButton(text=MENU_LABELS["clear"]),
+            ],
+            [KeyboardButton(text=MENU_LABELS["help"])],
+        ]
+    )
+    if is_private:
+        rows.append([KeyboardButton(text=MENU_LABELS["end_session"])])
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Choose an action",
+    )
 
 
 def format_session_member_label(user: dict) -> str:
@@ -156,8 +217,8 @@ async def prompt_for_playlist_url(message: Message, state: FSMContext) -> None:
     """Ask the user for a playlist URL and switch the FSM into input mode."""
     await state.set_state(AddPlaylistFlow.waiting_for_url)
     await message.reply(
-        "Send an upaste.de playlist export URL.\n"
-        "Example: https://upaste.de/g3h or https://upaste.de/raw/g3h"
+        "Send an upaste.de playlist export URL.\n\n" + PLAYLIST_EXPORT_INSTRUCTIONS,
+        reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
     )
 
 
@@ -212,11 +273,17 @@ async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: U
             common_videos = await compute_common_videos(conn, session.id)
 
     if not common_videos:
-        await message.reply("No common videos found across all playlists in this session yet.")
+        await message.reply(
+            "No common videos found across all playlists in this session yet.",
+            reply_markup=get_persistent_menu_keyboard(is_private),
+        )
         return
 
     lines = [f"{video.title}\n{video.url}" for video in common_videos]
-    await message.reply("Common videos in this session:\n\n" + "\n".join(lines))
+    await message.reply(
+        "Common videos in this session:\n\n" + "\n".join(lines),
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
 
 
 async def show_common_videos(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -239,11 +306,17 @@ async def show_common_videos(message: Message, bot: Bot, actor: User | None = No
         common_videos = await compute_common_videos(conn, session.id)
 
     if not common_videos:
-        await message.reply("No common videos found in this session.")
+        await message.reply(
+            "No common videos found in this session.",
+            reply_markup=get_persistent_menu_keyboard(is_private),
+        )
         return
 
     lines = [f"{video.title}\n{video.url}" for video in common_videos]
-    await message.reply("Common videos in this session:\n\n" + "\n".join(lines))
+    await message.reply(
+        "Common videos in this session:\n\n" + "\n".join(lines),
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
 
 
 async def delete_playlist_from_current_session(
@@ -272,7 +345,10 @@ async def delete_playlist_from_current_session(
     if count == 0:
         await message.reply(f"No playlist with YouTube ID '{youtube_playlist_id}' found in this session.")
         return
-    await message.reply(f"Deleted {count} playlist(s) with YouTube ID '{youtube_playlist_id}'.")
+    await message.reply(
+        f"Deleted {count} playlist(s) with YouTube ID '{youtube_playlist_id}'.",
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
 
 
 async def cmd_start(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -297,7 +373,8 @@ async def cmd_start(message: Message, bot: Bot, actor: User | None = None) -> No
                 await set_active_session_for_user(conn, telegram_id, session.id)
             await message.reply(
                 f"You have joined session {session.id}.\n"
-                "Use /add_playlist or the Add playlist button to send a playlist."
+                "Use /add_playlist or the Add playlist button to send a playlist.",
+                reply_markup=get_persistent_menu_keyboard(is_private),
             )
             return
 
@@ -333,7 +410,7 @@ async def cmd_start(message: Message, bot: Bot, actor: User | None = None) -> No
             "Use /add_playlist or the Add playlist button to submit a playlist."
         )
 
-    await message.reply(reply_text, reply_markup=get_main_menu_keyboard(is_private))
+    await message.reply(reply_text, reply_markup=get_persistent_menu_keyboard(is_private))
 
 
 async def cmd_session(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -360,7 +437,7 @@ async def cmd_session(message: Message, bot: Bot, actor: User | None = None) -> 
         bot_username = getattr(bot, "my_username", None)
         if bot_username and is_private:
             lines.append(f"Invite link: https://t.me/{bot_username}?start={session.short_code}")
-    await message.reply("\n".join(lines))
+    await message.reply("\n".join(lines), reply_markup=get_persistent_menu_keyboard(is_private))
 
 
 async def cmd_playlists(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -383,14 +460,17 @@ async def cmd_playlists(message: Message, bot: Bot, actor: User | None = None) -
         playlists = await get_playlists_for_session(conn, session.id)
 
     if not playlists:
-        await message.reply("No playlists added yet.")
+        await message.reply("No playlists added yet.", reply_markup=get_persistent_menu_keyboard(is_private))
         return
 
     lines = [
         f"• {playlist.title}\n  YouTube ID: {playlist.youtube_playlist_id}\n  URL: {playlist.url}"
         for playlist in playlists
     ]
-    await message.reply("Playlists in this session:\n\n" + "\n".join(lines))
+    await message.reply(
+        "Playlists in this session:\n\n" + "\n".join(lines),
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
 
 
 async def cmd_common(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -410,7 +490,10 @@ async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = Non
         active_session = await get_active_session_for_user(conn, telegram_id)
 
     if not sessions:
-        await message.reply("You are not a member of any sessions yet. Use /start to create or join one.")
+        await message.reply(
+            "You are not a member of any sessions yet. Use /start to create or join one.",
+            reply_markup=get_persistent_menu_keyboard(True),
+        )
         return
 
     lines = []
@@ -436,7 +519,7 @@ async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = Non
                 f"  Playlists per user: {playlists_line}\n"
                 f"  Common videos: {common_video_count}"
             )
-    await message.reply("Your sessions:\n\n" + "\n\n".join(lines))
+    await message.reply("Your sessions:\n\n" + "\n\n".join(lines), reply_markup=get_persistent_menu_keyboard(True))
 
 
 async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -459,7 +542,10 @@ async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = N
         async with transaction(conn):
             count = await delete_all_playlists_in_session(conn, session.id)
 
-    await message.reply(f"Deleted {count} playlist(s) from this session. The session remains active.")
+    await message.reply(
+        f"Deleted {count} playlist(s) from this session. The session remains active.",
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
 
 
 async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -468,7 +554,8 @@ async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = N
     if len(args) < 2:
         await message.reply(
             "Usage: /delete_playlist <youtube_playlist_id>\n"
-            "Use /playlists to see the available IDs."
+            "Use /playlists to see the available IDs.",
+            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
         )
         return
 
@@ -506,7 +593,10 @@ async def cmd_clear(message: Message, bot: Bot, actor: User | None = None) -> No
             if is_private:
                 await clear_active_session_for_user(conn, telegram_id)
 
-    await message.reply("Session data cleared. Use /start to create a new one.")
+    await message.reply(
+        "Session data cleared. Use /start to create a new one.",
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
 
 
 async def cmd_end_session(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -519,7 +609,10 @@ async def cmd_end_session(message: Message, bot: Bot, actor: User | None = None)
     async with bot.db_pool.acquire() as conn:
         async with transaction(conn):
             await clear_active_session_for_user(conn, telegram_id)
-    await message.reply("Current session closed. Use /start to create or join another session.")
+    await message.reply(
+        "Current session closed. Use /start to create or join another session.",
+        reply_markup=get_persistent_menu_keyboard(True),
+    )
 
 
 async def cmd_add_playlist(
@@ -535,7 +628,8 @@ async def cmd_add_playlist(
     if url is None:
         await message.reply(
             "Invalid playlist source URL.\n"
-            "Example: /add_playlist https://upaste.de/g3h"
+            f"Example: /add_playlist https://upaste.de/g3h\n\n{PLAYLIST_EXPORT_INSTRUCTIONS}",
+            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
         )
         return
 
@@ -549,7 +643,8 @@ async def handle_add_playlist_input(message: Message, bot: Bot, state: FSMContex
     if url is None:
         await message.reply(
             "I need an upaste.de playlist export URL.\n"
-            "Example: https://upaste.de/g3h"
+            f"Example: https://upaste.de/g3h\n\n{PLAYLIST_EXPORT_INSTRUCTIONS}",
+            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
         )
         return
 
@@ -585,9 +680,10 @@ async def cmd_help(message: Message) -> None:
         "/clear - Delete the current session\n"
         "/end_session - Leave the current private session\n"
         "/list_sessions - List your sessions\n"
-        "/help - Show this help"
+        "/help - Show this help\n\n"
+        f"{PLAYLIST_EXPORT_INSTRUCTIONS}"
     )
-    await message.reply(help_text, reply_markup=get_main_menu_keyboard(message.chat.type == "private"))
+    await message.reply(help_text, reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"))
 
 
 async def handle_callback(callback: CallbackQuery, bot: Bot, state: FSMContext) -> None:
@@ -681,6 +777,16 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_list_sessions, Command("list_sessions"))
     dp.message.register(handle_add_playlist_input, StateFilter(AddPlaylistFlow.waiting_for_url))
     dp.message.register(handle_delete_playlist_input, StateFilter(AddPlaylistFlow.waiting_for_delete_id))
+    dp.message.register(cmd_session, F.text == MENU_LABELS["session"])
+    dp.message.register(cmd_list_sessions, F.text == MENU_LABELS["list_sessions"])
+    dp.message.register(cmd_playlists, F.text == MENU_LABELS["playlists"])
+    dp.message.register(cmd_common, F.text == MENU_LABELS["common"])
+    dp.message.register(cmd_add_playlist, F.text == MENU_LABELS["add_playlist"])
+    dp.message.register(cmd_clear_playlists, F.text == MENU_LABELS["clear_playlists"])
+    dp.message.register(cmd_delete_playlist, F.text == MENU_LABELS["delete"])
+    dp.message.register(cmd_clear, F.text == MENU_LABELS["clear"])
+    dp.message.register(cmd_end_session, F.text == MENU_LABELS["end_session"])
+    dp.message.register(cmd_help, F.text == MENU_LABELS["help"])
     dp.callback_query.register(handle_callback)
 
     return dp

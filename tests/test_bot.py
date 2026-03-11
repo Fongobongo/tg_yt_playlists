@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.bot import (
+    MENU_LABELS,
     SessionLimitReachedError,
     cmd_add_playlist,
     cmd_clear,
@@ -18,6 +19,7 @@ from src.bot import (
     cmd_start,
     extract_playlist_url,
     get_main_menu_keyboard,
+    get_persistent_menu_keyboard,
     handle_add_playlist_input,
     handle_delete_playlist_input,
     handle_callback,
@@ -74,6 +76,7 @@ async def test_prompt_for_playlist_url_sets_state():
     state.set_state.assert_awaited_once()
     message.reply.assert_awaited_once()
     assert "Send an upaste.de playlist export URL" in message.reply.call_args[0][0]
+    assert "Open the playlist in YouTube" in message.reply.call_args[0][0]
 
 
 async def test_cmd_add_playlist_without_argument_prompts_for_url(mock_bot):
@@ -111,6 +114,7 @@ async def test_handle_add_playlist_input_accepts_only_playlist_urls(mock_bot):
     state.clear.assert_not_called()
     message.reply.assert_awaited_once()
     assert "I need an upaste.de playlist export URL" in message.reply.call_args[0][0]
+    assert "Upload text file" in message.reply.call_args[0][0]
 
 
 async def test_cmd_start_group_creates_session(mock_bot):
@@ -355,6 +359,14 @@ async def test_private_keyboard_uses_icon_labels():
     assert "🧭 Session" in texts
     assert "🗂 My sessions" in texts
     assert "➕ Add playlist" in texts
+
+
+async def test_persistent_keyboard_is_available():
+    keyboard = get_persistent_menu_keyboard(True)
+    texts = [button.text for row in keyboard.keyboard for button in row]
+    assert MENU_LABELS["session"] in texts
+    assert MENU_LABELS["list_sessions"] in texts
+    assert keyboard.is_persistent is True
 
 
 async def test_delete_session_callback_requires_owner(mock_bot):
