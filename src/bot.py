@@ -119,7 +119,7 @@ def extract_playlist_url(text: str) -> str | None:
     stripped = text.strip()
     id_match = UPASTE_ID_REGEX.fullmatch(stripped)
     if id_match:
-        return f"https://upaste.de/raw/{id_match.group(1)}"
+        return f"https://upaste.de/{id_match.group(1)}"
     return None
 
 
@@ -710,6 +710,14 @@ async def handle_delete_playlist_input(message: Message, bot: Bot, state: FSMCon
     await delete_playlist_from_current_session(message, bot, playlist_id)
 
 
+async def handle_idle_text(message: Message) -> None:
+    """Restore the keyboard when the bot receives unrelated text outside input mode."""
+    await message.reply(
+        "Use the menu buttons or /help. To add a playlist export, press ➕ Add playlist first.",
+        reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
+    )
+
+
 async def cmd_help(message: Message) -> None:
     """Show help information."""
     help_text = (
@@ -831,6 +839,7 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_clear, F.text == MENU_LABELS["clear"])
     dp.message.register(cmd_end_session, F.text == MENU_LABELS["end_session"])
     dp.message.register(cmd_help, F.text == MENU_LABELS["help"])
+    dp.message.register(handle_idle_text, StateFilter(None), F.text)
     dp.callback_query.register(handle_callback)
 
     return dp

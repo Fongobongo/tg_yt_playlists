@@ -11,8 +11,8 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_normalize_upaste_url_supports_regular_and_raw_links():
-    assert normalize_upaste_url("https://upaste.de/g3h") == "https://upaste.de/raw/g3h"
-    assert normalize_upaste_url("https://upaste.de/raw/g3h") == "https://upaste.de/raw/g3h"
+    assert normalize_upaste_url("https://upaste.de/g3h") == "https://upaste.de/g3h"
+    assert normalize_upaste_url("https://upaste.de/raw/g3h") == "https://upaste.de/g3h"
     assert normalize_upaste_url("https://example.com/test") is None
 
 
@@ -41,7 +41,7 @@ async def test_fetch_playlist_info_from_upaste_json():
 
     assert result["youtube_playlist_id"] == "upaste:WL"
     assert result["title"] == "Watch Later"
-    assert result["url"] == "https://upaste.de/raw/g3h"
+    assert result["url"] == "https://upaste.de/g3h"
     assert result["videos"][0]["youtube_video_id"] == "vid1"
     assert result["videos"][1]["title"] == "Second Video"
 

@@ -1,14 +1,16 @@
 """Playlist fetching from exported upaste JSON."""
 
 import asyncio
+import html
 import json
+import re
 from typing import Dict, List
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 
 def normalize_upaste_url(url: str) -> str | None:
-    """Return the raw upaste URL if the input points to upaste.de."""
+    """Return the canonical upaste page URL if the input points to upaste.de."""
     parsed = urlsplit(url.strip())
     if parsed.netloc not in {"upaste.de", "www.upaste.de"}:
         return None
@@ -22,18 +24,54 @@ def normalize_upaste_url(url: str) -> str | None:
         paste_id = path.split("/", 1)[0]
     if not paste_id:
         return None
-    return f"https://upaste.de/raw/{paste_id}"
+    return f"https://upaste.de/{paste_id}"
+
+
+def _extract_json_payload(payload: str) -> dict:
+    """Parse JSON directly or extract it from an HTML textarea."""
+    try:
+        data = json.loads(payload)
+        if not isinstance(data, dict):
+            raise ValueError("The upaste export must be a JSON object.")
+        return data
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r"<textarea[^>]*>(.*?)</textarea>", payload, re.DOTALL | re.IGNORECASE)
+    if not match:
+        raise ValueError("The upaste page does not contain a readable JSON export.")
+    textarea_content = html.unescape(match.group(1)).strip()
+    data = json.loads(textarea_content)
+    if not isinstance(data, dict):
+        raise ValueError("The upaste export must be a JSON object.")
+    return data
 
 
 def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
     """Download and parse playlist export JSON from upaste."""
-    raw_url = normalize_upaste_url(source_url)
-    if raw_url is None:
+    page_url = normalize_upaste_url(source_url)
+    if page_url is None:
         raise ValueError("The provided upaste URL is invalid.")
 
-    with urlopen(raw_url, timeout=30) as response:
-        payload = response.read().decode("utf-8")
-    info = json.loads(payload)
+    last_error: Exception | None = None
+    payload = None
+    candidate_urls = [page_url]
+    raw_url = page_url.replace("https://upaste.de/", "https://upaste.de/raw/", 1)
+    if raw_url not in candidate_urls:
+        candidate_urls.append(raw_url)
+
+    for candidate_url in candidate_urls:
+        try:
+            with urlopen(candidate_url, timeout=30) as response:
+                payload = response.read().decode("utf-8")
+            break
+        except Exception as exc:
+            last_error = exc
+
+    if payload is None:
+        raise ValueError(f"Failed to fetch upaste export: {last_error}")
+
+    info = _extract_json_payload(payload)
     videos_data = info.get("videos")
     if not isinstance(videos_data, list) or not videos_data:
         raise ValueError("The provided upaste export does not contain any videos.")
@@ -58,12 +96,12 @@ def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
     if not videos:
         raise ValueError("The provided upaste export does not contain any valid videos.")
 
-    playlist_id = info.get("id") or raw_url.rsplit("/", 1)[-1]
+    playlist_id = info.get("id") or page_url.rsplit("/", 1)[-1]
     playlist_title = info.get("title") or "Untitled Playlist"
     return {
         "youtube_playlist_id": f"upaste:{playlist_id}",
         "title": playlist_title,
-        "url": raw_url,
+        "url": page_url,
         "videos": videos,
     }
 

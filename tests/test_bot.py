@@ -23,6 +23,7 @@ from src.bot import (
     handle_add_playlist_input,
     handle_delete_playlist_input,
     handle_callback,
+    handle_idle_text,
     prompt_for_playlist_url,
 )
 
@@ -63,10 +64,10 @@ def make_message(text: str, chat_type: str = "group"):
 
 
 async def test_extract_playlist_url():
-    assert extract_playlist_url("g3h") == "https://upaste.de/raw/g3h"
-    assert extract_playlist_url("https://upaste.de/g3h") == "https://upaste.de/raw/g3h"
-    assert extract_playlist_url("upaste.de/g3h") == "https://upaste.de/raw/g3h"
-    assert extract_playlist_url("take this https://upaste.de/raw/g3h please") == "https://upaste.de/raw/g3h"
+    assert extract_playlist_url("g3h") == "https://upaste.de/g3h"
+    assert extract_playlist_url("https://upaste.de/g3h") == "https://upaste.de/g3h"
+    assert extract_playlist_url("upaste.de/g3h") == "https://upaste.de/g3h"
+    assert extract_playlist_url("take this https://upaste.de/raw/g3h please") == "https://upaste.de/g3h"
     assert extract_playlist_url("Just a normal message") is None
 
 
@@ -115,7 +116,7 @@ async def test_cmd_add_playlist_with_argument_processes_url(mock_bot):
     add_playlist.assert_awaited_once_with(
         message,
         mock_bot,
-        "https://upaste.de/raw/g3h",
+        "https://upaste.de/g3h",
         actor=None,
     )
 
@@ -143,7 +144,16 @@ async def test_handle_add_playlist_input_acknowledges_processing(mock_bot):
     state.clear.assert_awaited_once()
     message.reply.assert_awaited_once()
     assert "Processing playlist export..." in message.reply.call_args[0][0]
-    add_playlist.assert_awaited_once_with(message, mock_bot, "https://upaste.de/raw/g3h")
+    add_playlist.assert_awaited_once_with(message, mock_bot, "https://upaste.de/g3h")
+
+
+async def test_handle_idle_text_restores_keyboard():
+    message = make_message("hello", chat_type="private")
+
+    await handle_idle_text(message)
+
+    message.reply.assert_awaited_once()
+    assert "Use the menu buttons or /help" in message.reply.call_args[0][0]
 
 
 async def test_cmd_start_group_creates_session(mock_bot):
