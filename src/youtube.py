@@ -5,6 +5,7 @@ import html
 import json
 import re
 from typing import Dict, List
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
@@ -67,6 +68,11 @@ def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
             last_error = exc
 
     if payload is None:
+        if isinstance(last_error, HTTPError) and last_error.code == 404:
+            raise ValueError(
+                "Upaste returned 404. This service stores data only for about one hour, "
+                "so the export was probably already deleted."
+            )
         raise ValueError(f"Failed to fetch upaste export: {last_error}")
 
     info = _extract_json_payload(payload)

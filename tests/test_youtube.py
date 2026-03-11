@@ -1,6 +1,7 @@
 """Tests for upaste playlist fetching."""
 
 import json
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 import pytest
@@ -49,3 +50,16 @@ async def test_fetch_playlist_info_from_upaste_json():
 async def test_fetch_playlist_info_rejects_non_upaste_url():
     with pytest.raises(ValueError, match="Only upaste.de playlist export URLs are supported."):
         await fetch_playlist_info("https://www.youtube.com/playlist?list=PL12345")
+
+
+async def test_fetch_playlist_info_explains_upaste_404():
+    error = HTTPError(
+        url="https://upaste.de/raw/g3h",
+        code=404,
+        msg="Not Found",
+        hdrs=None,
+        fp=None,
+    )
+    with patch("src.youtube.urlopen", side_effect=error):
+        with pytest.raises(ValueError, match="stores data only for about one hour"):
+            await fetch_playlist_info("https://upaste.de/g3h")
