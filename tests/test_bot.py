@@ -354,7 +354,15 @@ async def test_group_keyboard_hides_my_sessions():
     keyboard = get_main_menu_keyboard(False)
     texts = [button.text for row in keyboard.inline_keyboard for button in row]
     assert "My sessions" not in texts
-    assert "Common videos" in texts
+    assert "🎬 Common videos" in texts
+
+
+async def test_private_keyboard_uses_icon_labels():
+    keyboard = get_main_menu_keyboard(True)
+    texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "🧭 Session" in texts
+    assert "🗂 My sessions" in texts
+    assert "➕ Add playlist" in texts
 
 
 async def test_delete_session_callback_requires_owner(mock_bot):

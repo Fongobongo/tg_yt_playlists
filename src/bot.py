@@ -79,26 +79,26 @@ def extract_playlist_url(text: str) -> str | None:
 
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
     """Return inline keyboard with main commands."""
-    buttons = [[InlineKeyboardButton(text="Session", callback_data="cmd:session")]]
+    buttons = [[InlineKeyboardButton(text="🧭 Session", callback_data="cmd:session")]]
     if is_private:
-        buttons[0].append(InlineKeyboardButton(text="My sessions", callback_data="cmd:list_sessions"))
+        buttons[0].append(InlineKeyboardButton(text="🗂 My sessions", callback_data="cmd:list_sessions"))
     buttons.extend(
         [
-            [InlineKeyboardButton(text="Playlists", callback_data="cmd:playlists")],
-            [InlineKeyboardButton(text="Common videos", callback_data="cmd:common")],
+            [InlineKeyboardButton(text="🎵 Playlists", callback_data="cmd:playlists")],
+            [InlineKeyboardButton(text="🎬 Common videos", callback_data="cmd:common")],
             [
-                InlineKeyboardButton(text="Add playlist", callback_data="cmd:add_playlist"),
-                InlineKeyboardButton(text="Clear playlists", callback_data="cmd:clear_playlists"),
+                InlineKeyboardButton(text="➕ Add playlist", callback_data="cmd:add_playlist"),
+                InlineKeyboardButton(text="🧹 Clear playlists", callback_data="cmd:clear_playlists"),
             ],
             [
-                InlineKeyboardButton(text="Delete playlist", callback_data="cmd:delete"),
-                InlineKeyboardButton(text="End all sessions", callback_data="cmd:clear"),
+                InlineKeyboardButton(text="🗑 Delete playlist", callback_data="cmd:delete"),
+                InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear"),
             ],
-            [InlineKeyboardButton(text="Help", callback_data="cmd:help")],
+            [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
         ]
     )
     if is_private:
-        buttons.append([InlineKeyboardButton(text="End session", callback_data="cmd:end_session")])
+        buttons.append([InlineKeyboardButton(text="🚪 End session", callback_data="cmd:end_session")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -123,17 +123,17 @@ async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
         bot.my_username = None
 
     commands = [
-        BotCommand(command="start", description="Create or join a session"),
-        BotCommand(command="session", description="Show current session"),
-        BotCommand(command="playlists", description="List playlists"),
-        BotCommand(command="common", description="Show common videos"),
-        BotCommand(command="add_playlist", description="Add playlist by URL"),
-        BotCommand(command="clear_playlists", description="Delete all playlists"),
-        BotCommand(command="delete_playlist", description="Delete one playlist"),
-        BotCommand(command="clear", description="Delete the current session"),
-        BotCommand(command="end_session", description="Leave the current private session"),
-        BotCommand(command="list_sessions", description="List your sessions"),
-        BotCommand(command="help", description="Show help"),
+        BotCommand(command="start", description="🚀 Create or join a session"),
+        BotCommand(command="session", description="🧭 Show current session"),
+        BotCommand(command="playlists", description="🎵 List playlists"),
+        BotCommand(command="common", description="🎬 Show common videos"),
+        BotCommand(command="add_playlist", description="➕ Add playlist by URL"),
+        BotCommand(command="clear_playlists", description="🧹 Delete all playlists"),
+        BotCommand(command="delete_playlist", description="🗑 Delete one playlist"),
+        BotCommand(command="clear", description="💥 Delete the current session"),
+        BotCommand(command="end_session", description="🚪 Leave the current private session"),
+        BotCommand(command="list_sessions", description="🗂 List your sessions"),
+        BotCommand(command="help", description="❓ Show help"),
     ]
     try:
         await bot.set_my_commands(commands)
