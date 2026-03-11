@@ -539,6 +539,20 @@ async def clear_active_session_for_user(conn: asyncpg.Connection, telegram_id: i
     )
 
 
+async def remove_user_from_session(conn: asyncpg.Connection, session_id: str, telegram_id: int) -> bool:
+    """Remove a user from a session, cascading their playlists and videos."""
+    row = await conn.fetchrow(
+        """
+        DELETE FROM users
+        WHERE session_id = $1 AND telegram_id = $2
+        RETURNING id
+        """,
+        session_id,
+        telegram_id,
+    )
+    return row is not None
+
+
 async def get_sessions_for_user(conn: asyncpg.Connection, telegram_id: int) -> List[Session]:
     rows = await conn.fetch(
         """

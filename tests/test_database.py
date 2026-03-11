@@ -17,6 +17,7 @@ from src.database import (
     get_video_sets_for_session,
     get_videos_by_youtube_ids,
     get_videos_for_playlist,
+    remove_user_from_session,
 )
 from src.intersection import compute_common_videos
 from src.models import Playlist, Session, User
@@ -210,6 +211,23 @@ async def test_get_playlists_for_user_in_session(conn):
     assert len(playlists) == 1
     assert playlists[0].title == "Mine"
     assert playlists[0].video_count == 1
+
+
+async def test_remove_user_from_session_cascades_user_playlists(conn):
+    session = await get_or_create_session(conn, chat_id=851, owner_telegram_id=777)
+    user = await get_or_create_user(conn, session.id, 777, None)
+    playlist = await create_playlist(conn, session.id, user.id, "PLA", "Mine", "url1")
+    await create_videos_bulk(
+        conn,
+        playlist.id,
+        [{"youtube_video_id": "v1", "title": "Video 1", "url": "url1", "position": 1}],
+    )
+
+    removed = await remove_user_from_session(conn, session.id, 777)
+    playlist_rows = await get_playlists_for_session(conn, session.id)
+
+    assert removed is True
+    assert playlist_rows == []
 
 
 async def test_delete_all_playlists_in_session(conn):

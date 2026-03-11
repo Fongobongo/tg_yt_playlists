@@ -43,6 +43,7 @@ from .database import (
     get_session_by_short_code,
     get_session_user_stats,
     get_sessions_for_user,
+    remove_user_from_session,
     set_active_session_for_user,
     transaction,
     user_is_member_of_session,
@@ -600,6 +601,7 @@ async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = Non
         for session in sessions:
             user_stats = await get_session_user_stats(conn, session.id)
             common_video_count = await get_common_video_count(conn, session.id)
+            owner_telegram_id = await get_session_owner_telegram_id(conn, session.id)
             suffix = " [current]" if active_session and session.id == active_session.id else ""
             users_line = ", ".join(
                 format_session_member_label(user)
@@ -624,7 +626,11 @@ async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = Non
                         InlineKeyboardButton(
                             text=f"Use {session.short_code or session.id[:8]}",
                             callback_data=f"select_session:{session.id}",
-                        )
+                        ),
+                        InlineKeyboardButton(
+                            text="Delete" if owner_telegram_id == telegram_id else "Leave",
+                            callback_data=f"delete_session:{session.id}",
+                        ),
                     ]
                 )
     await message.reply(
@@ -693,26 +699,25 @@ async def cmd_clear(message: Message, bot: Bot, actor: User | None = None) -> No
             if session is None:
                 await message.reply("No active session to clear.")
                 return
-            if session.chat_id != telegram_id:
-                await message.reply("Only the session owner can delete a shared private session.")
-                return
         else:
             session = await get_session_by_chat_id(conn, chat_id)
             if session is None:
                 await message.reply("No session for this chat.")
                 return
-            owner_telegram_id = await get_session_owner_telegram_id(conn, session.id)
-            if owner_telegram_id is not None and owner_telegram_id != telegram_id:
-                await message.reply("Only the session owner can delete this group session.")
-                return
+        owner_telegram_id = await get_session_owner_telegram_id(conn, session.id)
 
         async with transaction(conn):
-            await delete_session(conn, session.id)
-            if is_private:
+            if owner_telegram_id == telegram_id:
+                await delete_session(conn, session.id)
                 await clear_active_session_for_user(conn, telegram_id)
+                reply_text = "Session deleted for all participants."
+            else:
+                await remove_user_from_session(conn, session.id, telegram_id)
+                await clear_active_session_for_user(conn, telegram_id)
+                reply_text = "You left this session."
 
     await message.reply(
-        "Session data cleared. Use /start to create a new one.",
+        reply_text,
         reply_markup=get_persistent_menu_keyboard(is_private),
     )
 
@@ -854,13 +859,15 @@ async def handle_callback(callback: CallbackQuery, bot: Bot, state: FSMContext) 
                     await callback.answer("Access denied.", show_alert=True)
                     return
                 owner_telegram_id = await get_session_owner_telegram_id(conn, session_id)
-                if owner_telegram_id != callback.from_user.id:
-                    await callback.answer("Only the session owner can delete this session.", show_alert=True)
-                    return
                 async with transaction(conn):
-                    await delete_session(conn, session_id)
+                    if owner_telegram_id == callback.from_user.id:
+                        await delete_session(conn, session_id)
+                        callback_text = "Session deleted."
+                    else:
+                        await remove_user_from_session(conn, session_id, callback.from_user.id)
+                        callback_text = "You left the session."
                     await clear_active_session_for_user(conn, callback.from_user.id)
-            await callback.answer("Session deleted.")
+            await callback.answer(callback_text)
             return
 
         if not data.startswith("cmd:"):

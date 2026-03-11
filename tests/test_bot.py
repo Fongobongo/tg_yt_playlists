@@ -322,12 +322,14 @@ async def test_cmd_clear_deletes_session(mock_bot):
     with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
         "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=456)
     ), patch(
+        "src.bot.clear_active_session_for_user", new=AsyncMock()
+    ), patch(
         "src.bot.delete_session", new=AsyncMock(return_value=True)
     ) as delete_session:
         await cmd_clear(message, mock_bot)
 
     delete_session.assert_awaited_once_with(conn, "sess123")
-    assert "Session data cleared" in message.reply.call_args[0][0]
+    assert "Session deleted for all participants." in message.reply.call_args[0][0]
 
 
 async def test_cmd_clear_rejected_for_shared_private_session(mock_bot):
@@ -339,12 +341,17 @@ async def test_cmd_clear_rejected_for_shared_private_session(mock_bot):
     mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
 
     with patch("src.bot.get_active_session_for_user", new=AsyncMock(return_value=session)), patch(
+        "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=999)
+    ), patch(
+        "src.bot.clear_active_session_for_user", new=AsyncMock()
+    ), patch("src.bot.remove_user_from_session", new=AsyncMock(return_value=True)) as leave_session, patch(
         "src.bot.delete_session", new=AsyncMock()
     ) as delete_session:
         await cmd_clear(message, mock_bot)
 
     delete_session.assert_not_awaited()
-    assert "Only the session owner can delete" in message.reply.call_args[0][0]
+    leave_session.assert_awaited_once_with(conn, "sess123", 456)
+    assert "You left this session." in message.reply.call_args[0][0]
 
 
 async def test_cmd_clear_rejected_for_group_non_owner(mock_bot):
@@ -357,11 +364,16 @@ async def test_cmd_clear_rejected_for_group_non_owner(mock_bot):
 
     with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
         "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=999)
-    ), patch("src.bot.delete_session", new=AsyncMock()) as delete_session:
+    ), patch(
+        "src.bot.clear_active_session_for_user", new=AsyncMock()
+    ), patch("src.bot.remove_user_from_session", new=AsyncMock(return_value=True)) as leave_session, patch(
+        "src.bot.delete_session", new=AsyncMock()
+    ) as delete_session:
         await cmd_clear(message, mock_bot)
 
     delete_session.assert_not_awaited()
-    assert "Only the session owner can delete this group session." in message.reply.call_args[0][0]
+    leave_session.assert_awaited_once_with(conn, "sess123", 456)
+    assert "You left this session." in message.reply.call_args[0][0]
 
 
 async def test_cmd_end_session_private(mock_bot):
@@ -393,7 +405,7 @@ async def test_cmd_list_sessions_includes_user_and_common_stats(mock_bot):
     mock_bot.db_pool = MagicMock()
     mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
     sessions = [SimpleNamespace(id="sess123", chat_id=123, created_at=SimpleNamespace(date=lambda: "2026-03-11"), short_code="abc123")]
-    active = SimpleNamespace(id="sess123")
+    active = None
     user_stats = [
         {"telegram_id": 111, "username": "alice", "playlist_count": 2},
         {"telegram_id": 222, "username": None, "playlist_count": 1},
@@ -403,6 +415,8 @@ async def test_cmd_list_sessions_includes_user_and_common_stats(mock_bot):
         "src.bot.get_active_session_for_user", new=AsyncMock(return_value=active)
     ), patch("src.bot.get_session_user_stats", new=AsyncMock(return_value=user_stats)), patch(
         "src.bot.get_common_video_count", new=AsyncMock(return_value=3)
+    ), patch(
+        "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=456)
     ):
         await cmd_list_sessions(message, mock_bot)
 
@@ -410,7 +424,8 @@ async def test_cmd_list_sessions_includes_user_and_common_stats(mock_bot):
     assert "Users: @alice, user-without-username" in reply_text
     assert "Playlists per user: @alice: 2, user-without-username: 1" in reply_text
     assert "Common videos: 3" in reply_text
-    assert "reply_markup" in message.reply.call_args.kwargs
+    reply_markup = message.reply.call_args.kwargs["reply_markup"]
+    assert reply_markup.inline_keyboard[0][1].text == "Delete"
 
 
 async def test_handle_delete_playlist_input_deletes_playlist(mock_bot):
@@ -455,17 +470,23 @@ async def test_delete_session_callback_requires_owner(mock_bot):
     callback.answer = AsyncMock()
     state = DummyState()
     conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
     mock_bot.db_pool = MagicMock()
     mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
 
     with patch("src.bot.user_is_member_of_session", new=AsyncMock(return_value=True)), patch(
         "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=999)
-    ), patch("src.bot.delete_session", new=AsyncMock()) as delete_session:
+    ), patch(
+        "src.bot.clear_active_session_for_user", new=AsyncMock()
+    ), patch("src.bot.remove_user_from_session", new=AsyncMock(return_value=True)) as leave_session, patch(
+        "src.bot.delete_session", new=AsyncMock()
+    ) as delete_session:
         await handle_callback(callback, mock_bot, state)
 
     delete_session.assert_not_awaited()
+    leave_session.assert_awaited_once_with(conn, "sess123", 456)
     callback.answer.assert_awaited()
-    assert "Only the session owner can delete this session." in callback.answer.call_args[0][0]
+    assert "You left the session." in callback.answer.call_args[0][0]
 
 
 async def test_list_sessions_callback_uses_callback_user_not_message_author(mock_bot):
@@ -493,6 +514,8 @@ async def test_list_sessions_callback_uses_callback_user_not_message_author(mock
         "src.bot.get_active_session_for_user", new=AsyncMock(return_value=active)
     ), patch("src.bot.get_session_user_stats", new=AsyncMock(return_value=[])), patch(
         "src.bot.get_common_video_count", new=AsyncMock(return_value=0)
+    ), patch(
+        "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=999)
     ):
         await handle_callback(callback, mock_bot, state)
 
