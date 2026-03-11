@@ -37,7 +37,7 @@ from .database import (
     get_active_session_for_user,
     get_or_create_session,
     get_or_create_user,
-    get_playlists_for_session,
+    get_playlists_for_user_in_session,
     get_session_by_chat_id,
     get_session_owner_telegram_id,
     get_session_by_short_code,
@@ -210,6 +210,12 @@ def format_session_member_label(user: dict) -> str:
     return "user-without-username"
 
 
+def format_video_line(index: int, title: str, url: str, duration_text: str | None) -> str:
+    """Render one numbered video item."""
+    suffix = f" ({duration_text})" if duration_text else ""
+    return f"{index}. {title}{suffix}\n{url}"
+
+
 async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
     """Initialize database connection pool and ensure tables exist."""
     config: Config = bot.config
@@ -275,7 +281,7 @@ async def prompt_for_delete_playlist_id(message: Message, state: FSMContext) -> 
     """Ask the user for a playlist ID and switch the FSM into delete mode."""
     await state.set_state(AddPlaylistFlow.waiting_for_delete_id)
     await message.reply(
-        "Send the YouTube playlist ID to delete.\n"
+        "Send the playlist ID to delete.\n"
         "Use /playlists to see the available IDs."
     )
 
@@ -331,10 +337,14 @@ async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: U
         )
         return
 
-    lines = [f"{video.title}\n{video.url}" for video in common_videos]
+    lines = [
+        format_video_line(index, video.title, video.url, video.duration_text)
+        for index, video in enumerate(common_videos, start=1)
+    ]
     await message.reply(
-        "Common videos in this session:\n\n" + "\n".join(lines),
+        f"Common videos in this session: {len(common_videos)}\n\n" + "\n\n".join(lines),
         reply_markup=get_persistent_menu_keyboard(is_private),
+        disable_web_page_preview=True,
     )
 
 
@@ -364,17 +374,21 @@ async def show_common_videos(message: Message, bot: Bot, actor: User | None = No
         )
         return
 
-    lines = [f"{video.title}\n{video.url}" for video in common_videos]
+    lines = [
+        format_video_line(index, video.title, video.url, video.duration_text)
+        for index, video in enumerate(common_videos, start=1)
+    ]
     await message.reply(
-        "Common videos in this session:\n\n" + "\n".join(lines),
+        f"Common videos in this session: {len(common_videos)}\n\n" + "\n\n".join(lines),
         reply_markup=get_persistent_menu_keyboard(is_private),
+        disable_web_page_preview=True,
     )
 
 
 async def delete_playlist_from_current_session(
     message: Message, bot: Bot, youtube_playlist_id: str, actor: User | None = None
 ) -> None:
-    """Delete playlists by YouTube playlist ID from the current session."""
+    """Delete playlists by playlist ID from the current session."""
     chat_id = message.chat.id
     telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
@@ -395,10 +409,10 @@ async def delete_playlist_from_current_session(
             count = await delete_playlist_by_youtube_id(conn, session.id, youtube_playlist_id)
 
     if count == 0:
-        await message.reply(f"No playlist with YouTube ID '{youtube_playlist_id}' found in this session.")
+        await message.reply(f"No playlist with ID '{youtube_playlist_id}' found in this session.")
         return
     await message.reply(
-        f"Deleted {count} playlist(s) with YouTube ID '{youtube_playlist_id}'.",
+        f"Deleted {count} playlist(s) with ID '{youtube_playlist_id}'.",
         reply_markup=get_persistent_menu_keyboard(is_private),
     )
 
@@ -534,19 +548,26 @@ async def cmd_playlists(message: Message, bot: Bot, actor: User | None = None) -
             if session is None:
                 await message.reply("No session found for this chat. Use /start to begin.")
                 return
-        playlists = await get_playlists_for_session(conn, session.id)
+        playlists = await get_playlists_for_user_in_session(conn, session.id, telegram_id)
 
     if not playlists:
-        await message.reply("No playlists added yet.", reply_markup=get_persistent_menu_keyboard(is_private))
+        await message.reply(
+            "You have not added any playlists to this session yet.",
+            reply_markup=get_persistent_menu_keyboard(is_private),
+        )
         return
 
     lines = [
-        f"• {playlist.title}\n  YouTube ID: {playlist.youtube_playlist_id}\n  URL: {playlist.url}"
+        f"• {playlist.title}\n"
+        f"  Playlist ID: {playlist.youtube_playlist_id}\n"
+        f"  Videos: {playlist.video_count or 0}\n"
+        f"  URL: {playlist.url}"
         for playlist in playlists
     ]
     await message.reply(
-        "Playlists in this session:\n\n" + "\n".join(lines),
+        "Your playlists in this session:\n\n" + "\n\n".join(lines),
         reply_markup=get_persistent_menu_keyboard(is_private),
+        disable_web_page_preview=True,
     )
 
 
@@ -574,6 +595,7 @@ async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = Non
         return
 
     lines = []
+    buttons = []
     async with bot.db_pool.acquire() as conn:
         for session in sessions:
             user_stats = await get_session_user_stats(conn, session.id)
@@ -596,7 +618,19 @@ async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = Non
                 f"  Playlists per user: {playlists_line}\n"
                 f"  Common videos: {common_video_count}"
             )
-    await message.reply("Your sessions:\n\n" + "\n\n".join(lines), reply_markup=get_persistent_menu_keyboard(True))
+            if not active_session or session.id != active_session.id:
+                buttons.append(
+                    [
+                        InlineKeyboardButton(
+                            text=f"Use {session.short_code or session.id[:8]}",
+                            callback_data=f"select_session:{session.id}",
+                        )
+                    ]
+                )
+    await message.reply(
+        "Your sessions:\n\n" + "\n\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else get_persistent_menu_keyboard(True),
+    )
 
 
 async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -626,7 +660,7 @@ async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = N
 
 
 async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = None) -> None:
-    """Delete playlists by YouTube playlist ID from the current session."""
+    """Delete playlists by playlist ID from the current session."""
     if (message.text or "").strip() == MENU_LABELS["delete"]:
         await message.reply(
             "Send the playlist ID to delete.\nUse /playlists to see the available IDs.",
@@ -637,7 +671,7 @@ async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = N
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
-            "Usage: /delete_playlist <youtube_playlist_id>\n"
+            "Usage: /delete_playlist <playlist_id>\n"
             "Use /playlists to see the available IDs.",
             reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
         )
@@ -750,7 +784,7 @@ async def handle_delete_playlist_input(message: Message, bot: Bot, state: FSMCon
     playlist_id = (message.text or "").strip()
     if not playlist_id:
         await message.reply(
-            "I need a YouTube playlist ID.\n"
+            "I need a playlist ID.\n"
             "Use /playlists to see the available IDs."
         )
         return
@@ -778,16 +812,17 @@ async def cmd_help(message: Message) -> None:
         "Commands:\n\n"
         "/start - Create a session or join by code\n"
         "/session - Show current session\n"
-        "/playlists - List playlists in the session\n"
+        "/playlists - List your playlists in the current session\n"
         "/common - Show common videos in the session\n"
         "/add_playlist <url> - Add an upaste.de playlist export\n"
         "/clear_playlists - Delete all playlists from the session\n"
-        "/delete_playlist <youtube_id> - Delete one playlist\n"
+        "/delete_playlist <playlist_id> - Delete one playlist\n"
         "/clear - Delete the current session\n"
         "/end_session - Leave the current private session\n"
         "/list_sessions - List your sessions\n"
         "/help - Show this help\n\n"
-        f"{PLAYLIST_EXPORT_INSTRUCTIONS}"
+        f"{PLAYLIST_EXPORT_INSTRUCTIONS}\n\n"
+        "To switch to another session, open /list_sessions and press the corresponding Use button."
     )
     await message.reply(help_text, reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"))
 

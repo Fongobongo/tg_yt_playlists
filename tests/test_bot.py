@@ -235,11 +235,11 @@ async def test_cmd_playlists_renders_list(mock_bot):
     mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
 
     with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
-        "src.bot.get_playlists_for_session",
+        "src.bot.get_playlists_for_user_in_session",
         new=AsyncMock(
             return_value=[
-                SimpleNamespace(title="Playlist A", youtube_playlist_id="PL_A", url="https://youtube.com/a"),
-                SimpleNamespace(title="Playlist B", youtube_playlist_id="PL_B", url="https://youtube.com/b"),
+                SimpleNamespace(title="Playlist A", youtube_playlist_id="PL_A", url="https://youtube.com/a", video_count=3),
+                SimpleNamespace(title="Playlist B", youtube_playlist_id="PL_B", url="https://youtube.com/b", video_count=7),
             ]
         ),
     ):
@@ -247,9 +247,10 @@ async def test_cmd_playlists_renders_list(mock_bot):
 
     message.reply.assert_awaited_once()
     reply_text = message.reply.call_args[0][0]
-    assert "Playlists in this session" in reply_text
+    assert "Your playlists in this session" in reply_text
     assert "Playlist A" in reply_text
     assert "PL_B" in reply_text
+    assert "Videos: 7" in reply_text
 
 
 async def test_cmd_common_renders_common_videos(mock_bot):
@@ -263,16 +264,17 @@ async def test_cmd_common_renders_common_videos(mock_bot):
         "src.bot.compute_common_videos",
         new=AsyncMock(
             return_value=[
-                SimpleNamespace(title="Video A", url="https://youtu.be/a"),
-                SimpleNamespace(title="Video B", url="https://youtu.be/b"),
+                SimpleNamespace(title="Video A", url="https://youtu.be/a", duration_text="42 минуты"),
+                SimpleNamespace(title="Video B", url="https://youtu.be/b", duration_text=None),
             ]
         ),
     ):
         await cmd_common(message, mock_bot)
 
     reply_text = message.reply.call_args[0][0]
-    assert "Common videos in this session" in reply_text
-    assert "Video A" in reply_text
+    assert "Common videos in this session: 2" in reply_text
+    assert "1. Video A (42 минуты)" in reply_text
+    assert "2. Video B" in reply_text
 
 
 async def test_cmd_clear_playlists_success(mock_bot):
@@ -408,6 +410,7 @@ async def test_cmd_list_sessions_includes_user_and_common_stats(mock_bot):
     assert "Users: @alice, user-without-username" in reply_text
     assert "Playlists per user: @alice: 2, user-without-username: 1" in reply_text
     assert "Common videos: 3" in reply_text
+    assert "reply_markup" in message.reply.call_args.kwargs
 
 
 async def test_handle_delete_playlist_input_deletes_playlist(mock_bot):

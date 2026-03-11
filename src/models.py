@@ -37,6 +37,7 @@ class Playlist:
     title: str
     url: str
     created_at: datetime
+    video_count: int | None = None
 
 
 @dataclass
@@ -50,3 +51,4 @@ class Video:
     url: str
     position: int
     created_at: datetime
+    duration_text: str | None = None

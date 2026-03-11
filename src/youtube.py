@@ -93,6 +93,7 @@ def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
                 "youtube_video_id": video_id,
                 "title": video_title,
                 "url": f"https://www.youtube.com/watch?v={video_id}",
+                "duration_text": entry.get("timeLong") or entry.get("timeShort"),
                 "position": index,
             }
         )

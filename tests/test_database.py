@@ -13,6 +13,7 @@ from src.database import (
     get_or_create_session,
     get_or_create_user,
     get_playlists_for_session,
+    get_playlists_for_user_in_session,
     get_video_sets_for_session,
     get_videos_by_youtube_ids,
     get_videos_for_playlist,
@@ -76,6 +77,7 @@ async def test_create_and_get_videos(conn):
 
     fetched = await get_videos_for_playlist(conn, playlist.id)
     assert [video.youtube_video_id for video in fetched] == ["v1", "v2"]
+    assert fetched[0].duration_text is None
 
 
 async def test_get_video_sets_for_session(conn):
@@ -184,6 +186,30 @@ async def test_delete_playlist_by_youtube_id(conn):
 
     assert deleted == 1
     assert remaining_playlists == []
+
+
+async def test_get_playlists_for_user_in_session(conn):
+    session = await get_or_create_session(conn, chat_id=850, owner_telegram_id=777)
+    user_one = await get_or_create_user(conn, session.id, 777, None)
+    user_two = await get_or_create_user(conn, session.id, 778, None)
+    playlist_one = await create_playlist(conn, session.id, user_one.id, "PLA", "Mine", "url1")
+    playlist_two = await create_playlist(conn, session.id, user_two.id, "PLB", "Other", "url2")
+    await create_videos_bulk(
+        conn,
+        playlist_one.id,
+        [{"youtube_video_id": "v1", "title": "Video 1", "url": "url1", "position": 1, "duration_text": "10 минут"}],
+    )
+    await create_videos_bulk(
+        conn,
+        playlist_two.id,
+        [{"youtube_video_id": "v2", "title": "Video 2", "url": "url2", "position": 1}],
+    )
+
+    playlists = await get_playlists_for_user_in_session(conn, session.id, 777)
+
+    assert len(playlists) == 1
+    assert playlists[0].title == "Mine"
+    assert playlists[0].video_count == 1
 
 
 async def test_delete_all_playlists_in_session(conn):

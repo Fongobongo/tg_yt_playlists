@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS videos (
     youtube_video_id TEXT NOT NULL,
     title TEXT NOT NULL,
     url TEXT NOT NULL,
+    duration_text TEXT,
     position INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -69,6 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_videos_youtube_id ON videos(youtube_video_id);
 CREATE INDEX IF NOT EXISTS idx_user_active_session_session_id ON user_active_session(session_id);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_telegram_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_sessions_owner_telegram_id ON sessions(owner_telegram_id);
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS duration_text TEXT;
 """
 
 
@@ -308,6 +310,45 @@ async def get_playlists_for_session(conn: asyncpg.Connection, session_id: str) -
     ]
 
 
+async def get_playlists_for_user_in_session(
+    conn: asyncpg.Connection, session_id: str, telegram_id: int
+) -> List[Playlist]:
+    rows = await conn.fetch(
+        """
+        SELECT
+            p.id,
+            p.session_id,
+            p.user_id,
+            p.youtube_playlist_id,
+            p.title,
+            p.url,
+            p.created_at,
+            COUNT(v.id) AS video_count
+        FROM playlists p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN videos v ON v.playlist_id = p.id
+        WHERE p.session_id = $1 AND u.telegram_id = $2
+        GROUP BY p.id, p.session_id, p.user_id, p.youtube_playlist_id, p.title, p.url, p.created_at
+        ORDER BY p.created_at ASC
+        """,
+        session_id,
+        telegram_id,
+    )
+    return [
+        Playlist(
+            id=row["id"],
+            session_id=row["session_id"],
+            user_id=row["user_id"],
+            youtube_playlist_id=row["youtube_playlist_id"],
+            title=row["title"],
+            url=row["url"],
+            created_at=str_to_dt(row["created_at"]),
+            video_count=row["video_count"],
+        )
+        for row in rows
+    ]
+
+
 async def delete_all_playlists_in_session(conn: asyncpg.Connection, session_id: str) -> int:
     rows = await conn.fetch(
         "DELETE FROM playlists WHERE session_id = $1 RETURNING id",
@@ -351,6 +392,7 @@ async def create_videos_bulk(
             video["youtube_video_id"],
             video["title"],
             video["url"],
+            video.get("duration_text"),
             video["position"],
         )
         for video in videos
@@ -359,8 +401,8 @@ async def create_videos_bulk(
         return
     await conn.executemany(
         """
-        INSERT INTO videos (id, playlist_id, youtube_video_id, title, url, position)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO videos (id, playlist_id, youtube_video_id, title, url, duration_text, position)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         """,
         records,
     )
@@ -369,7 +411,7 @@ async def create_videos_bulk(
 async def get_videos_for_playlist(conn: asyncpg.Connection, playlist_id: str) -> List[Video]:
     rows = await conn.fetch(
         """
-        SELECT id, playlist_id, youtube_video_id, title, url, position, created_at
+        SELECT id, playlist_id, youtube_video_id, title, url, duration_text, position, created_at
         FROM videos
         WHERE playlist_id = $1
         ORDER BY position ASC
@@ -385,6 +427,7 @@ async def get_videos_for_playlist(conn: asyncpg.Connection, playlist_id: str) ->
             url=row["url"],
             position=row["position"],
             created_at=str_to_dt(row["created_at"]),
+            duration_text=row["duration_text"],
         )
         for row in rows
     ]
@@ -419,7 +462,7 @@ async def get_videos_by_youtube_ids(
     rows = await conn.fetch(
         """
         SELECT DISTINCT ON (youtube_video_id)
-            id, playlist_id, youtube_video_id, title, url, position, created_at
+            id, playlist_id, youtube_video_id, title, url, duration_text, position, created_at
         FROM videos
         WHERE youtube_video_id = ANY($1::text[])
         ORDER BY youtube_video_id, created_at ASC
@@ -435,6 +478,7 @@ async def get_videos_by_youtube_ids(
             url=row["url"],
             position=row["position"],
             created_at=str_to_dt(row["created_at"]),
+            duration_text=row["duration_text"],
         )
         for row in rows
     ]
