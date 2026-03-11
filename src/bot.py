@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 UPASTE_URL_REGEX = re.compile(
     r"(?:https?://)?(?:www\.)?upaste\.de/(?:(?:raw/)?[A-Za-z0-9]+)"
 )
+UPASTE_ID_REGEX = re.compile(r"\b([A-Za-z0-9]{3,})\b")
 
 PLAYLIST_EXPORT_INSTRUCTIONS = (
     "How to export a playlist:\n"
@@ -107,12 +108,19 @@ def extract_playlist_url(text: str) -> str | None:
     if normalized is not None:
         return normalized
     match = UPASTE_URL_REGEX.search(text)
-    if not match:
-        return None
-    candidate = match.group(0)
-    if not candidate.startswith(("http://", "https://")):
-        candidate = f"https://{candidate}"
-    return normalize_upaste_url(candidate)
+    if match:
+        candidate = match.group(0)
+        if not candidate.startswith(("http://", "https://")):
+            candidate = f"https://{candidate}"
+        normalized = normalize_upaste_url(candidate)
+        if normalized is not None:
+            return normalized
+
+    stripped = text.strip()
+    id_match = UPASTE_ID_REGEX.fullmatch(stripped)
+    if id_match:
+        return f"https://upaste.de/raw/{id_match.group(1)}"
+    return None
 
 
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:

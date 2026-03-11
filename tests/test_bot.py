@@ -63,6 +63,7 @@ def make_message(text: str, chat_type: str = "group"):
 
 
 async def test_extract_playlist_url():
+    assert extract_playlist_url("g3h") == "https://upaste.de/raw/g3h"
     assert extract_playlist_url("https://upaste.de/g3h") == "https://upaste.de/raw/g3h"
     assert extract_playlist_url("upaste.de/g3h") == "https://upaste.de/raw/g3h"
     assert extract_playlist_url("take this https://upaste.de/raw/g3h please") == "https://upaste.de/raw/g3h"
