@@ -122,6 +122,19 @@ async def test_handle_add_playlist_input_accepts_only_playlist_urls(mock_bot):
     assert "chromewebstore.google.com" in message.reply.call_args[0][0]
 
 
+async def test_handle_add_playlist_input_acknowledges_processing(mock_bot):
+    message = make_message("g3h", chat_type="private")
+    state = DummyState()
+
+    with patch("src.bot.add_playlist_to_session", new=AsyncMock()) as add_playlist:
+        await handle_add_playlist_input(message, mock_bot, state)
+
+    state.clear.assert_awaited_once()
+    message.reply.assert_awaited_once()
+    assert "Processing playlist export..." in message.reply.call_args[0][0]
+    add_playlist.assert_awaited_once_with(message, mock_bot, "https://upaste.de/raw/g3h")
+
+
 async def test_cmd_start_group_creates_session(mock_bot):
     message = make_message("/start", chat_type="group")
     conn = MagicMock()

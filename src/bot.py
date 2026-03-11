@@ -668,15 +668,20 @@ async def cmd_add_playlist(
 async def handle_add_playlist_input(message: Message, bot: Bot, state: FSMContext) -> None:
     """Handle the next message after the user pressed Add playlist."""
     url = extract_playlist_url(message.text or "")
+    is_private = message.chat.type == "private"
     if url is None:
         await message.reply(
             "I need an upaste.de playlist export URL.\n"
             f"Example: https://upaste.de/g3h\n\n{PLAYLIST_EXPORT_INSTRUCTIONS}",
-            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
+            reply_markup=get_persistent_menu_keyboard(is_private),
         )
         return
 
     await state.clear()
+    await message.reply(
+        "Processing playlist export...",
+        reply_markup=get_persistent_menu_keyboard(is_private),
+    )
     await add_playlist_to_session(message, bot, url)
 
 
