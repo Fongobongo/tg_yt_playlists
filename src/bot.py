@@ -210,6 +210,34 @@ def format_video_line(index: int, title: str, url: str, duration_text: str | Non
     return f"{index}. {title}{suffix}\n{url}"
 
 
+def format_common_videos_message(common_videos: list) -> str:
+    """Render the common videos response body."""
+    lines = [
+        format_video_line(index, video.title, video.url, getattr(video, "duration_text", None))
+        for index, video in enumerate(common_videos, start=1)
+    ]
+    return f"Common videos in this session: {len(common_videos)}\n\n" + "\n\n".join(lines)
+
+
+async def notify_session_members_about_common_videos(bot: Bot, session_id: str, common_videos: list) -> None:
+    """Send the common videos message to every participant of the session."""
+    message_text = format_common_videos_message(common_videos)
+    async with bot.db_pool.acquire() as conn:
+        user_stats = await get_session_user_stats(conn, session_id)
+
+    for user in user_stats:
+        telegram_id = user["telegram_id"]
+        try:
+            await bot.send_message(
+                chat_id=telegram_id,
+                text=message_text,
+                reply_markup=get_persistent_menu_keyboard(True),
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.warning("Failed to notify user %s about common videos in session %s", telegram_id, session_id)
+
+
 async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
     """Initialize database connection pool and ensure tables exist."""
     config: Config = bot.config
@@ -330,15 +358,7 @@ async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: U
         )
         return
 
-    lines = [
-        format_video_line(index, video.title, video.url, video.duration_text)
-        for index, video in enumerate(common_videos, start=1)
-    ]
-    await message.reply(
-        f"Common videos in this session: {len(common_videos)}\n\n" + "\n\n".join(lines),
-        reply_markup=get_persistent_menu_keyboard(is_private),
-        disable_web_page_preview=True,
-    )
+    await notify_session_members_about_common_videos(bot, session.id, common_videos)
 
 
 async def show_common_videos(message: Message, bot: Bot, actor: User | None = None) -> None:
@@ -367,12 +387,8 @@ async def show_common_videos(message: Message, bot: Bot, actor: User | None = No
         )
         return
 
-    lines = [
-        format_video_line(index, video.title, video.url, video.duration_text)
-        for index, video in enumerate(common_videos, start=1)
-    ]
     await message.reply(
-        f"Common videos in this session: {len(common_videos)}\n\n" + "\n\n".join(lines),
+        format_common_videos_message(common_videos),
         reply_markup=get_persistent_menu_keyboard(is_private),
         disable_web_page_preview=True,
     )

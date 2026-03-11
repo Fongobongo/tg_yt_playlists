@@ -24,6 +24,7 @@ from src.bot import (
     handle_delete_playlist_input,
     handle_callback,
     handle_idle_text,
+    notify_session_members_about_common_videos,
     prompt_for_playlist_url,
 )
 
@@ -189,6 +190,25 @@ async def test_handle_idle_text_joins_session_from_bare_code(mock_bot):
         await handle_idle_text(message, mock_bot)
 
     join_session.assert_awaited_once_with(message, mock_bot, "85fb5b2b7d50")
+
+
+async def test_notify_session_members_about_common_videos(mock_bot):
+    conn = MagicMock()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+    mock_bot.send_message = AsyncMock()
+    common_videos = [
+        SimpleNamespace(title="Video A", url="https://youtu.be/a", duration_text="42 минуты"),
+    ]
+    user_stats = [
+        {"telegram_id": 111, "username": "alice", "playlist_count": 1},
+        {"telegram_id": 222, "username": "bob", "playlist_count": 1},
+    ]
+
+    with patch("src.bot.get_session_user_stats", new=AsyncMock(return_value=user_stats)):
+        await notify_session_members_about_common_videos(mock_bot, "sess123", common_videos)
+
+    assert mock_bot.send_message.await_count == 2
 
 
 async def test_cmd_start_group_creates_session(mock_bot):
