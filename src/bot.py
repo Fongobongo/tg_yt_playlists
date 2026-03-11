@@ -15,6 +15,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    User,
 )
 
 from .config import Config, load_config, setup_logging
@@ -56,6 +57,15 @@ YOUTUBE_PLAYLIST_REGEX = re.compile(
 class AddPlaylistFlow(StatesGroup):
     waiting_for_url = State()
     waiting_for_delete_id = State()
+
+
+def resolve_actor(message: Message, actor: User | None = None) -> User:
+    """Return the user on whose behalf the command should run."""
+    if actor is not None:
+        return actor
+    if message.from_user is None:
+        raise ValueError("Message has no user context")
+    return message.from_user
 
 
 def extract_playlist_url(text: str) -> str | None:
@@ -169,11 +179,12 @@ async def prompt_for_delete_playlist_id(message: Message, state: FSMContext) -> 
     )
 
 
-async def add_playlist_to_session(message: Message, bot: Bot, url: str) -> None:
+async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: User | None = None) -> None:
     """Fetch, store, and compute the intersection for a playlist URL."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
-    username = message.from_user.username
+    user = resolve_actor(message, actor)
+    telegram_id = user.id
+    username = user.username
     is_private = message.chat.type == "private"
 
     try:
@@ -217,10 +228,10 @@ async def add_playlist_to_session(message: Message, bot: Bot, url: str) -> None:
     await message.reply("Common videos in this session:\n\n" + "\n".join(lines))
 
 
-async def show_common_videos(message: Message, bot: Bot) -> None:
+async def show_common_videos(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Show common videos in the current session."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
 
     async with bot.db_pool.acquire() as conn:
@@ -245,11 +256,11 @@ async def show_common_videos(message: Message, bot: Bot) -> None:
 
 
 async def delete_playlist_from_current_session(
-    message: Message, bot: Bot, youtube_playlist_id: str
+    message: Message, bot: Bot, youtube_playlist_id: str, actor: User | None = None
 ) -> None:
     """Delete playlists by YouTube playlist ID from the current session."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
 
     async with bot.db_pool.acquire() as conn:
@@ -273,11 +284,12 @@ async def delete_playlist_from_current_session(
     await message.reply(f"Deleted {count} playlist(s) with YouTube ID '{youtube_playlist_id}'.")
 
 
-async def cmd_start(message: Message, bot: Bot) -> None:
+async def cmd_start(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Handle /start command with optional session join code."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
-    username = message.from_user.username
+    user = resolve_actor(message, actor)
+    telegram_id = user.id
+    username = user.username
     is_private = message.chat.type == "private"
 
     args = (message.text or "").split(maxsplit=1)
@@ -333,10 +345,10 @@ async def cmd_start(message: Message, bot: Bot) -> None:
     await message.reply(reply_text, reply_markup=get_main_menu_keyboard(is_private))
 
 
-async def cmd_session(message: Message, bot: Bot) -> None:
+async def cmd_session(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Show current session information."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
 
     async with bot.db_pool.acquire() as conn:
@@ -360,10 +372,10 @@ async def cmd_session(message: Message, bot: Bot) -> None:
     await message.reply("\n".join(lines))
 
 
-async def cmd_playlists(message: Message, bot: Bot) -> None:
+async def cmd_playlists(message: Message, bot: Bot, actor: User | None = None) -> None:
     """List all playlists in the current session."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
 
     async with bot.db_pool.acquire() as conn:
@@ -390,18 +402,18 @@ async def cmd_playlists(message: Message, bot: Bot) -> None:
     await message.reply("Playlists in this session:\n\n" + "\n".join(lines))
 
 
-async def cmd_common(message: Message, bot: Bot) -> None:
+async def cmd_common(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Show common videos in the current session."""
-    await show_common_videos(message, bot)
+    await show_common_videos(message, bot, actor=actor)
 
 
-async def cmd_list_sessions(message: Message, bot: Bot) -> None:
+async def cmd_list_sessions(message: Message, bot: Bot, actor: User | None = None) -> None:
     """List all sessions the user is a member of."""
     if message.chat.type != "private":
         await message.reply("The /list_sessions command works only in private chats.")
         return
 
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     async with bot.db_pool.acquire() as conn:
         sessions = await get_sessions_for_user(conn, telegram_id)
         active_session = await get_active_session_for_user(conn, telegram_id)
@@ -436,10 +448,10 @@ async def cmd_list_sessions(message: Message, bot: Bot) -> None:
     await message.reply("Your sessions:\n\n" + "\n\n".join(lines))
 
 
-async def cmd_clear_playlists(message: Message, bot: Bot) -> None:
+async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Delete all playlists from the current session."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
 
     async with bot.db_pool.acquire() as conn:
@@ -459,7 +471,7 @@ async def cmd_clear_playlists(message: Message, bot: Bot) -> None:
     await message.reply(f"Deleted {count} playlist(s) from this session. The session remains active.")
 
 
-async def cmd_delete_playlist(message: Message, bot: Bot) -> None:
+async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Delete playlists by YouTube playlist ID from the current session."""
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
@@ -470,13 +482,13 @@ async def cmd_delete_playlist(message: Message, bot: Bot) -> None:
         return
 
     youtube_playlist_id = args[1].strip()
-    await delete_playlist_from_current_session(message, bot, youtube_playlist_id)
+    await delete_playlist_from_current_session(message, bot, youtube_playlist_id, actor=actor)
 
 
-async def cmd_clear(message: Message, bot: Bot) -> None:
+async def cmd_clear(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Delete the current session entirely."""
     chat_id = message.chat.id
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     is_private = message.chat.type == "private"
 
     async with bot.db_pool.acquire() as conn:
@@ -506,20 +518,22 @@ async def cmd_clear(message: Message, bot: Bot) -> None:
     await message.reply("Session data cleared. Use /start to create a new one.")
 
 
-async def cmd_end_session(message: Message, bot: Bot) -> None:
+async def cmd_end_session(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Clear the active session pointer for a private user."""
     if message.chat.type != "private":
         await message.reply("The /end_session command works only in private chats.")
         return
 
-    telegram_id = message.from_user.id
+    telegram_id = resolve_actor(message, actor).id
     async with bot.db_pool.acquire() as conn:
         async with transaction(conn):
             await clear_active_session_for_user(conn, telegram_id)
     await message.reply("Current session closed. Use /start to create or join another session.")
 
 
-async def cmd_add_playlist(message: Message, bot: Bot, state: FSMContext) -> None:
+async def cmd_add_playlist(
+    message: Message, bot: Bot, state: FSMContext, actor: User | None = None
+) -> None:
     """Handle /add_playlist as either a direct command or a prompt entrypoint."""
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
@@ -535,7 +549,7 @@ async def cmd_add_playlist(message: Message, bot: Bot, state: FSMContext) -> Non
         return
 
     await state.clear()
-    await add_playlist_to_session(message, bot, url)
+    await add_playlist_to_session(message, bot, url, actor=actor)
 
 
 async def handle_add_playlist_input(message: Message, bot: Bot, state: FSMContext) -> None:
@@ -627,23 +641,23 @@ async def handle_callback(callback: CallbackQuery, bot: Bot, state: FSMContext) 
 
         command = data.split(":", 1)[1]
         if command == "session":
-            await cmd_session(message, bot)
+            await cmd_session(message, bot, actor=callback.from_user)
         elif command == "playlists":
-            await cmd_playlists(message, bot)
+            await cmd_playlists(message, bot, actor=callback.from_user)
         elif command == "common":
-            await cmd_common(message, bot)
+            await cmd_common(message, bot, actor=callback.from_user)
         elif command == "add_playlist":
             await prompt_for_playlist_url(message, state)
         elif command == "clear_playlists":
-            await cmd_clear_playlists(message, bot)
+            await cmd_clear_playlists(message, bot, actor=callback.from_user)
         elif command == "delete":
             await prompt_for_delete_playlist_id(message, state)
         elif command == "clear":
-            await cmd_clear(message, bot)
+            await cmd_clear(message, bot, actor=callback.from_user)
         elif command == "end_session":
-            await cmd_end_session(message, bot)
+            await cmd_end_session(message, bot, actor=callback.from_user)
         elif command == "list_sessions":
-            await cmd_list_sessions(message, bot)
+            await cmd_list_sessions(message, bot, actor=callback.from_user)
         elif command == "help":
             await cmd_help(message)
         else:

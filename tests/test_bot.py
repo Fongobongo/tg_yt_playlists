@@ -106,6 +106,7 @@ async def test_cmd_add_playlist_with_argument_processes_url(mock_bot):
         message,
         mock_bot,
         "https://www.youtube.com/playlist?list=PLABC",
+        actor=None,
     )
 
 
@@ -375,3 +376,36 @@ async def test_delete_session_callback_requires_owner(mock_bot):
     delete_session.assert_not_awaited()
     callback.answer.assert_awaited()
     assert "Only the session owner can delete this session." in callback.answer.call_args[0][0]
+
+
+async def test_list_sessions_callback_uses_callback_user_not_message_author(mock_bot):
+    callback = MagicMock()
+    callback.data = "cmd:list_sessions"
+    callback.from_user = SimpleNamespace(id=456, username="tester")
+    callback.message = make_message("button", chat_type="private")
+    callback.message.from_user = SimpleNamespace(id=999999, username="watch_yt_together_bot")
+    callback.answer = AsyncMock()
+    state = DummyState()
+    conn = MagicMock()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+    sessions = [
+        SimpleNamespace(
+            id="sess123",
+            chat_id=123,
+            created_at=SimpleNamespace(date=lambda: "2026-03-11"),
+            short_code="abc123",
+        )
+    ]
+    active = SimpleNamespace(id="sess123")
+
+    with patch("src.bot.get_sessions_for_user", new=AsyncMock(return_value=sessions)) as get_sessions, patch(
+        "src.bot.get_active_session_for_user", new=AsyncMock(return_value=active)
+    ), patch("src.bot.get_session_user_stats", new=AsyncMock(return_value=[])), patch(
+        "src.bot.get_common_video_count", new=AsyncMock(return_value=0)
+    ):
+        await handle_callback(callback, mock_bot, state)
+
+    get_sessions.assert_awaited_once_with(conn, 456)
+    callback.message.reply.assert_awaited_once()
+    callback.answer.assert_awaited()
