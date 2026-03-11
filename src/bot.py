@@ -45,7 +45,7 @@ from .database import (
     user_is_member_of_session,
 )
 from .intersection import compute_common_videos
-from .youtube import fetch_playlist_info
+from .youtube import fetch_playlist_info, normalize_upaste_url
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,10 @@ def resolve_actor(message: Message, actor: User | None = None) -> User:
 
 
 def extract_playlist_url(text: str) -> str | None:
-    """Extract a normalized YouTube playlist URL from text."""
+    """Extract a supported playlist source URL from text."""
+    upaste_url = normalize_upaste_url(text)
+    if upaste_url is not None:
+        return upaste_url
     match = YOUTUBE_PLAYLIST_REGEX.search(text)
     if not match:
         return None
@@ -165,8 +168,8 @@ async def prompt_for_playlist_url(message: Message, state: FSMContext) -> None:
     """Ask the user for a playlist URL and switch the FSM into input mode."""
     await state.set_state(AddPlaylistFlow.waiting_for_url)
     await message.reply(
-        "Send a YouTube playlist URL.\n"
-        "Example: https://www.youtube.com/playlist?list=PLxxx"
+        "Send an upaste.de playlist export URL.\n"
+        "Example: https://upaste.de/g3h or https://upaste.de/raw/g3h"
     )
 
 
@@ -180,7 +183,7 @@ async def prompt_for_delete_playlist_id(message: Message, state: FSMContext) -> 
 
 
 async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: User | None = None) -> None:
-    """Fetch, store, and compute the intersection for a playlist URL."""
+    """Fetch, store, and compute the intersection for a playlist source URL."""
     chat_id = message.chat.id
     user = resolve_actor(message, actor)
     telegram_id = user.id
@@ -543,8 +546,8 @@ async def cmd_add_playlist(
     url = extract_playlist_url(args[1])
     if url is None:
         await message.reply(
-            "Invalid YouTube playlist URL.\n"
-            "Example: /add_playlist https://www.youtube.com/playlist?list=PLxxx"
+            "Invalid playlist source URL.\n"
+            "Example: /add_playlist https://upaste.de/g3h"
         )
         return
 
@@ -557,8 +560,8 @@ async def handle_add_playlist_input(message: Message, bot: Bot, state: FSMContex
     url = extract_playlist_url(message.text or "")
     if url is None:
         await message.reply(
-            "I need a YouTube playlist URL.\n"
-            "Example: https://www.youtube.com/playlist?list=PLxxx"
+            "I need an upaste.de playlist export URL.\n"
+            "Example: https://upaste.de/g3h"
         )
         return
 
@@ -588,7 +591,7 @@ async def cmd_help(message: Message) -> None:
         "/session - Show current session\n"
         "/playlists - List playlists in the session\n"
         "/common - Show common videos in the session\n"
-        "/add_playlist <url> - Add a YouTube playlist\n"
+        "/add_playlist <url> - Add an upaste.de playlist export\n"
         "/clear_playlists - Delete all playlists from the session\n"
         "/delete_playlist <youtube_id> - Delete one playlist\n"
         "/clear - Delete the current session\n"

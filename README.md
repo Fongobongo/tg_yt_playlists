@@ -16,7 +16,7 @@ Telegram bot for collecting YouTube playlist links inside a shared session and s
 - The intended target is Supabase Postgres via `DATABASE_URL`.
 - All SQLite-specific code and config were removed from the application.
 - The bot now runs as a webhook-based web service instead of long polling.
-- Playlist links are accepted only through `/add_playlist <url>` or through the `Add playlist` button, which prompts for the next message.
+- Playlist exports are accepted through `/add_playlist <url>` or through the `Add playlist` button, which prompts for the next message.
 - A single user can own at most 5 sessions.
 
 ## Environment
@@ -67,11 +67,22 @@ docker compose up --build
 
 - `/start` creates a session in the current group or private chat.
 - `/start <code>` joins a private session by invite code.
-- `/add_playlist <url>` adds a playlist immediately.
+- `/add_playlist <url>` adds a playlist export immediately.
 - `/common` or the `Common videos` button shows the current intersection for the session.
-- `Add playlist` button switches the bot into “waiting for URL” mode; the next playlist link message is processed.
+- `Add playlist` button switches the bot into “waiting for URL” mode; the next `upaste.de` link is processed.
 - `Delete playlist` button switches the bot into “waiting for playlist ID” mode; the next message is treated as the playlist ID to remove.
-- Plain text messages with playlist links are ignored unless the bot is explicitly waiting after `Add playlist`.
+- Plain text messages with playlist export links are ignored unless the bot is explicitly waiting after `Add playlist`.
+
+## Playlist Source
+
+The primary source format is an exported playlist JSON hosted on `upaste.de`.
+
+Supported examples:
+
+- `https://upaste.de/g3h`
+- `https://upaste.de/raw/g3h`
+
+The bot downloads the raw JSON export, extracts the `videos` list, and computes intersections by YouTube video ID.
 
 ## Render Deploy
 

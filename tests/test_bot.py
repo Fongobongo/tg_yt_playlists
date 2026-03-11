@@ -64,6 +64,7 @@ async def test_extract_playlist_url():
     assert extract_playlist_url("https://www.youtube.com/playlist?list=PL123") == (
         "https://www.youtube.com/playlist?list=PL123"
     )
+    assert extract_playlist_url("https://upaste.de/g3h") == "https://upaste.de/raw/g3h"
     assert extract_playlist_url("http://youtube.com/playlist?list=PL456&feature=share") == (
         "https://www.youtube.com/playlist?list=PL456"
     )
@@ -81,7 +82,7 @@ async def test_prompt_for_playlist_url_sets_state():
 
     state.set_state.assert_awaited_once()
     message.reply.assert_awaited_once()
-    assert "Send a YouTube playlist URL" in message.reply.call_args[0][0]
+    assert "Send an upaste.de playlist export URL" in message.reply.call_args[0][0]
 
 
 async def test_cmd_add_playlist_without_argument_prompts_for_url(mock_bot):
@@ -118,7 +119,7 @@ async def test_handle_add_playlist_input_accepts_only_playlist_urls(mock_bot):
 
     state.clear.assert_not_called()
     message.reply.assert_awaited_once()
-    assert "I need a YouTube playlist URL" in message.reply.call_args[0][0]
+    assert "I need an upaste.de playlist export URL" in message.reply.call_args[0][0]
 
 
 async def test_cmd_start_group_creates_session(mock_bot):
