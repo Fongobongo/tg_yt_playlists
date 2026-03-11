@@ -93,6 +93,17 @@ async def test_cmd_add_playlist_without_argument_prompts_for_url(mock_bot):
     message.reply.assert_awaited_once()
 
 
+async def test_add_playlist_menu_button_prompts_for_url(mock_bot):
+    message = make_message(MENU_LABELS["add_playlist"], chat_type="private")
+    state = DummyState()
+
+    await cmd_add_playlist(message, mock_bot, state)
+
+    state.set_state.assert_awaited_once()
+    message.reply.assert_awaited_once()
+    assert "Send an upaste.de playlist export URL" in message.reply.call_args[0][0]
+
+
 async def test_cmd_add_playlist_with_argument_processes_url(mock_bot):
     message = make_message("/add_playlist https://upaste.de/g3h")
     state = DummyState()

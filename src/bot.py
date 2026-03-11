@@ -578,6 +578,13 @@ async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = N
 
 async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Delete playlists by YouTube playlist ID from the current session."""
+    if (message.text or "").strip() == MENU_LABELS["delete"]:
+        await message.reply(
+            "Send the playlist ID to delete.\nUse /playlists to see the available IDs.",
+            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
+        )
+        return
+
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
@@ -647,6 +654,10 @@ async def cmd_add_playlist(
     message: Message, bot: Bot, state: FSMContext, actor: User | None = None
 ) -> None:
     """Handle /add_playlist as either a direct command or a prompt entrypoint."""
+    if (message.text or "").strip() == MENU_LABELS["add_playlist"]:
+        await prompt_for_playlist_url(message, state)
+        return
+
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
         await prompt_for_playlist_url(message, state)
