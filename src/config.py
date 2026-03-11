@@ -52,6 +52,10 @@ def load_config() -> Config:
 
     if not webhook_path.startswith("/"):
         raise ValueError("WEBHOOK_PATH must start with '/'")
+    if "=" in webhook_base_url:
+        raise ValueError("WEBHOOK_BASE_URL must contain only the URL, not 'KEY=value'")
+    if not webhook_base_url.startswith("https://"):
+        raise ValueError("WEBHOOK_BASE_URL must start with 'https://'")
 
     try:
         port = int(port_raw)

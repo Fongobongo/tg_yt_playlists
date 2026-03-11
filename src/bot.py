@@ -99,7 +99,7 @@ def format_session_member_label(user: dict) -> str:
     return "user-without-username"
 
 
-async def startup(bot: Bot) -> None:
+async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
     """Initialize database connection pool and ensure tables exist."""
     config: Config = bot.config
     pool = await create_pool(config.database_url)
@@ -134,7 +134,7 @@ async def startup(bot: Bot) -> None:
         await bot.set_webhook(
             webhook_url,
             secret_token=config.webhook_secret,
-            allowed_updates=Dispatcher.resolve_used_update_types(),
+            allowed_updates=dispatcher.resolve_used_update_types(),
         )
     except Exception as exc:
         logger.exception("Failed to set webhook to %s", webhook_url)
@@ -147,6 +147,7 @@ async def shutdown(bot: Bot) -> None:
     pool = getattr(bot, "db_pool", None)
     if pool:
         await close_pool(pool)
+    await bot.session.close()
     logger.info("Bot shutdown")
 
 
