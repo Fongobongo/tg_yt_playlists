@@ -55,10 +55,8 @@ def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
 
     last_error: Exception | None = None
     payload = None
-    candidate_urls = [page_url]
     raw_url = page_url.replace("https://upaste.de/", "https://upaste.de/raw/", 1)
-    if raw_url not in candidate_urls:
-        candidate_urls.append(raw_url)
+    candidate_urls = [raw_url, page_url]
 
     for candidate_url in candidate_urls:
         try:
@@ -101,7 +99,7 @@ def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
     return {
         "youtube_playlist_id": f"upaste:{playlist_id}",
         "title": playlist_title,
-        "url": page_url,
+        "url": raw_url,
         "videos": videos,
     }
 
