@@ -84,7 +84,6 @@ MENU_LABELS = {
     "common": "🎬 Common videos",
     "add_playlist": "➕ Add playlist",
     "clear_playlists": "🧹 Clear playlists",
-    "delete": "🗑 Delete playlist",
     "clear": "💥 End all sessions",
     "help": "❓ Help",
     "end_session": "🚪 End session",
@@ -161,10 +160,7 @@ def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="➕ Add playlist", callback_data="cmd:add_playlist"),
                 InlineKeyboardButton(text="🧹 Clear playlists", callback_data="cmd:clear_playlists"),
             ],
-            [
-                InlineKeyboardButton(text="🗑 Delete playlist", callback_data="cmd:delete"),
-                InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear"),
-            ],
+            [InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear")],
             [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
         ]
     )
@@ -186,10 +182,7 @@ def get_persistent_menu_keyboard(is_private: bool) -> ReplyKeyboardMarkup:
                 KeyboardButton(text=MENU_LABELS["add_playlist"]),
                 KeyboardButton(text=MENU_LABELS["clear_playlists"]),
             ],
-            [
-                KeyboardButton(text=MENU_LABELS["delete"]),
-                KeyboardButton(text=MENU_LABELS["clear"]),
-            ],
+            [KeyboardButton(text=MENU_LABELS["clear"])],
             [KeyboardButton(text=MENU_LABELS["help"])],
         ]
     )
