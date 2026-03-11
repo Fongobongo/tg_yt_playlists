@@ -237,7 +237,6 @@ async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
         BotCommand(command="common", description="🎬 Show common videos"),
         BotCommand(command="add_playlist", description="➕ Add playlist by URL"),
         BotCommand(command="clear_playlists", description="🧹 Delete all playlists"),
-        BotCommand(command="delete_playlist", description="🗑 Delete one playlist"),
         BotCommand(command="clear", description="💥 Delete the current session"),
         BotCommand(command="end_session", description="🚪 Leave the current private session"),
         BotCommand(command="list_sessions", description="🗂 List your sessions"),
@@ -665,28 +664,6 @@ async def cmd_clear_playlists(message: Message, bot: Bot, actor: User | None = N
     )
 
 
-async def cmd_delete_playlist(message: Message, bot: Bot, actor: User | None = None) -> None:
-    """Delete playlists by playlist ID from the current session."""
-    if (message.text or "").strip() == MENU_LABELS["delete"]:
-        await message.reply(
-            "Send the playlist ID to delete.\nUse /playlists to see the available IDs.",
-            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
-        )
-        return
-
-    args = (message.text or "").split(maxsplit=1)
-    if len(args) < 2:
-        await message.reply(
-            "Usage: /delete_playlist <playlist_id>\n"
-            "Use /playlists to see the available IDs.",
-            reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
-        )
-        return
-
-    youtube_playlist_id = args[1].strip()
-    await delete_playlist_from_current_session(message, bot, youtube_playlist_id, actor=actor)
-
-
 async def cmd_clear(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Delete the current session entirely."""
     chat_id = message.chat.id
@@ -821,7 +798,6 @@ async def cmd_help(message: Message) -> None:
         "/common - Show common videos in the session\n"
         "/add_playlist <url> - Add an upaste.de playlist export\n"
         "/clear_playlists - Delete all playlists from the session\n"
-        "/delete_playlist <playlist_id> - Delete one playlist\n"
         "/clear - Delete the current session\n"
         "/end_session - Leave the current private session\n"
         "/list_sessions - List your sessions\n"
@@ -917,7 +893,6 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_playlists, Command("playlists"))
     dp.message.register(cmd_common, Command("common"))
     dp.message.register(cmd_clear_playlists, Command("clear_playlists"))
-    dp.message.register(cmd_delete_playlist, Command("delete_playlist"))
     dp.message.register(cmd_clear, Command("clear"))
     dp.message.register(cmd_end_session, Command("end_session"))
     dp.message.register(cmd_add_playlist, Command("add_playlist"))
@@ -931,7 +906,6 @@ def create_dispatcher() -> Dispatcher:
     dp.message.register(cmd_common, F.text == MENU_LABELS["common"])
     dp.message.register(cmd_add_playlist, F.text == MENU_LABELS["add_playlist"])
     dp.message.register(cmd_clear_playlists, F.text == MENU_LABELS["clear_playlists"])
-    dp.message.register(cmd_delete_playlist, F.text == MENU_LABELS["delete"])
     dp.message.register(cmd_clear, F.text == MENU_LABELS["clear"])
     dp.message.register(cmd_end_session, F.text == MENU_LABELS["end_session"])
     dp.message.register(cmd_help, F.text == MENU_LABELS["help"])

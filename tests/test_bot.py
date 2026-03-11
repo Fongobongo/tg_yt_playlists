@@ -12,7 +12,6 @@ from src.bot import (
     cmd_clear,
     cmd_clear_playlists,
     cmd_common,
-    cmd_delete_playlist,
     cmd_end_session,
     cmd_list_sessions,
     cmd_playlists,
@@ -292,23 +291,6 @@ async def test_cmd_clear_playlists_success(mock_bot):
 
     delete_all.assert_awaited_once_with(conn, "sess123")
     assert "Deleted 2 playlist(s)" in message.reply.call_args[0][0]
-
-
-async def test_cmd_delete_playlist_success(mock_bot):
-    message = make_message("/delete_playlist PL123")
-    conn = MagicMock()
-    conn.transaction.return_value = DummyTransaction()
-    session = SimpleNamespace(id="sess123")
-    mock_bot.db_pool = MagicMock()
-    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
-
-    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
-        "src.bot.delete_playlist_by_youtube_id", new=AsyncMock(return_value=1)
-    ) as delete_playlist:
-        await cmd_delete_playlist(message, mock_bot)
-
-    delete_playlist.assert_awaited_once_with(conn, "sess123", "PL123")
-    assert "Deleted 1 playlist(s)" in message.reply.call_args[0][0]
 
 
 async def test_cmd_clear_deletes_session(mock_bot):
