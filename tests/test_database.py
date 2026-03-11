@@ -102,8 +102,7 @@ async def test_get_video_sets_for_session(conn):
     )
 
     sets = await get_video_sets_for_session(conn, session.id)
-    assert {"v1", "v2"} in sets
-    assert {"v2", "v3"} in sets
+    assert sets == [{"v1", "v2", "v3"}]
 
 
 async def test_get_videos_by_youtube_ids(conn):
@@ -127,14 +126,15 @@ async def test_get_videos_by_youtube_ids(conn):
 
 async def test_compute_common_videos(conn):
     session = await get_or_create_session(conn, chat_id=700, owner_telegram_id=555)
-    user = await get_or_create_user(conn, session.id, 555, None)
+    user_one = await get_or_create_user(conn, session.id, 555, None)
+    user_two = await get_or_create_user(conn, session.id, 556, None)
 
-    for playlist_id, videos in (
-        ("PL1", ["v1", "v2"]),
-        ("PL2", ["v2", "v3"]),
-        ("PL3", ["v2", "v4"]),
+    for playlist_id, user_id, videos in (
+        ("PL1", user_one.id, ["v1", "v2"]),
+        ("PL2", user_one.id, ["v2", "v3"]),
+        ("PL3", user_two.id, ["v2", "v4"]),
     ):
-        playlist = await create_playlist(conn, session.id, user.id, playlist_id, playlist_id, "url")
+        playlist = await create_playlist(conn, session.id, user_id, playlist_id, playlist_id, "url")
         await create_videos_bulk(
             conn,
             playlist.id,
@@ -166,7 +166,7 @@ async def test_compute_common_videos_with_empty_playlist(conn):
     await create_playlist(conn, session.id, user.id, "PLEMPTY", "Empty", "url")
 
     common = await compute_common_videos(conn, session.id)
-    assert common == []
+    assert [video.youtube_video_id for video in common] == ["v1"]
 
 
 async def test_delete_playlist_by_youtube_id(conn):

@@ -391,22 +391,24 @@ async def get_videos_for_playlist(conn: asyncpg.Connection, playlist_id: str) ->
 
 
 async def get_video_sets_for_session(conn: asyncpg.Connection, session_id: str) -> List[Set[str]]:
+    """Return one deduplicated video-id set per user in the session."""
     rows = await conn.fetch(
         """
-        SELECT p.id AS playlist_id, v.youtube_video_id
-        FROM playlists p
+        SELECT u.id AS user_id, p.id AS playlist_id, v.youtube_video_id
+        FROM users u
+        LEFT JOIN playlists p ON p.user_id = u.id
         LEFT JOIN videos v ON v.playlist_id = p.id
-        WHERE p.session_id = $1
+        WHERE u.session_id = $1
         """,
         session_id,
     )
-    sets_by_playlist: dict[str, Set[str]] = {}
+    sets_by_user: dict[str, Set[str]] = {}
     for row in rows:
-        playlist_id = row["playlist_id"]
-        sets_by_playlist.setdefault(playlist_id, set())
+        user_id = row["user_id"]
+        sets_by_user.setdefault(user_id, set())
         if row["youtube_video_id"] is not None:
-            sets_by_playlist[playlist_id].add(row["youtube_video_id"])
-    return list(sets_by_playlist.values())
+            sets_by_user[user_id].add(row["youtube_video_id"])
+    return list(sets_by_user.values())
 
 
 async def get_videos_by_youtube_ids(
