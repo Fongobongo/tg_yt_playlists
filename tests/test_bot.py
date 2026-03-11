@@ -17,6 +17,7 @@ from src.bot import (
     cmd_list_sessions,
     cmd_playlists,
     cmd_start,
+    extract_join_code,
     extract_playlist_url,
     get_main_menu_keyboard,
     get_persistent_menu_keyboard,
@@ -69,6 +70,18 @@ async def test_extract_playlist_url():
     assert extract_playlist_url("upaste.de/g3h") == "https://upaste.de/g3h"
     assert extract_playlist_url("take this https://upaste.de/raw/g3h please") == "https://upaste.de/g3h"
     assert extract_playlist_url("Just a normal message") is None
+
+
+async def test_extract_join_code():
+    assert (
+        extract_join_code(
+            "https://t.me/watch_yt_together_bot?start=a570fb97e2d8",
+            "watch_yt_together_bot",
+        )
+        == "a570fb97e2d8"
+    )
+    assert extract_join_code("https://t.me/other_bot?start=a570fb97e2d8", "watch_yt_together_bot") is None
+    assert extract_join_code("hello") is None
 
 
 async def test_prompt_for_playlist_url_sets_state():
@@ -149,11 +162,23 @@ async def test_handle_add_playlist_input_acknowledges_processing(mock_bot):
 
 async def test_handle_idle_text_restores_keyboard():
     message = make_message("hello", chat_type="private")
+    mock_bot = MagicMock()
+    mock_bot.my_username = "watch_yt_together_bot"
 
-    await handle_idle_text(message)
+    await handle_idle_text(message, mock_bot)
 
     message.reply.assert_awaited_once()
     assert "Use the menu buttons or /help" in message.reply.call_args[0][0]
+
+
+async def test_handle_idle_text_joins_session_from_invite_link(mock_bot):
+    message = make_message("https://t.me/watch_yt_together_bot?start=a570fb97e2d8", chat_type="private")
+    mock_bot.my_username = "watch_yt_together_bot"
+
+    with patch("src.bot.join_session_by_code", new=AsyncMock(return_value=True)) as join_session:
+        await handle_idle_text(message, mock_bot)
+
+    join_session.assert_awaited_once_with(message, mock_bot, "a570fb97e2d8")
 
 
 async def test_cmd_start_group_creates_session(mock_bot):

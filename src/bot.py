@@ -2,6 +2,7 @@
 
 import logging
 import re
+from urllib.parse import parse_qs, urlsplit
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
@@ -121,6 +122,26 @@ def extract_playlist_url(text: str) -> str | None:
     if id_match:
         return f"https://upaste.de/{id_match.group(1)}"
     return None
+
+
+def extract_join_code(text: str, bot_username: str | None = None) -> str | None:
+    """Extract a session join code from a Telegram deep-link."""
+    candidate = text.strip()
+    if not candidate.startswith(("http://", "https://")):
+        return None
+
+    parsed = urlsplit(candidate)
+    if parsed.netloc not in {"t.me", "www.t.me", "telegram.me", "www.telegram.me"}:
+        return None
+
+    link_username = parsed.path.strip("/").split("/", 1)[0]
+    if bot_username and link_username and link_username.lower() != bot_username.lower():
+        return None
+
+    start_values = parse_qs(parsed.query).get("start")
+    if not start_values:
+        return None
+    return start_values[0].strip() or None
 
 
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
@@ -379,6 +400,42 @@ async def delete_playlist_from_current_session(
     )
 
 
+async def join_session_by_code(
+    message: Message, bot: Bot, join_code: str, actor: User | None = None
+) -> bool:
+    """Join an existing private session by invite code."""
+    user = resolve_actor(message, actor)
+    telegram_id = user.id
+    username = user.username
+    is_private = message.chat.type == "private"
+
+    if not is_private:
+        await message.reply(
+            "Invite links can only be used in private chat with the bot.",
+            reply_markup=get_persistent_menu_keyboard(False),
+        )
+        return True
+
+    async with bot.db_pool.acquire() as conn:
+        session = await get_session_by_short_code(conn, join_code)
+        if session is None:
+            await message.reply(
+                f"Session with code '{join_code}' not found.",
+                reply_markup=get_persistent_menu_keyboard(True),
+            )
+            return True
+        async with transaction(conn):
+            await get_or_create_user(conn, session.id, telegram_id, username)
+            await set_active_session_for_user(conn, telegram_id, session.id)
+
+    await message.reply(
+        f"You have joined session {session.id}.\n"
+        "Use /add_playlist or the Add playlist button to send a playlist.",
+        reply_markup=get_persistent_menu_keyboard(True),
+    )
+    return True
+
+
 async def cmd_start(message: Message, bot: Bot, actor: User | None = None) -> None:
     """Handle /start command with optional session join code."""
     chat_id = message.chat.id
@@ -392,18 +449,7 @@ async def cmd_start(message: Message, bot: Bot, actor: User | None = None) -> No
 
     async with bot.db_pool.acquire() as conn:
         if join_code and is_private:
-            session = await get_session_by_short_code(conn, join_code)
-            if session is None:
-                await message.reply(f"Session with code '{join_code}' not found.")
-                return
-            async with transaction(conn):
-                await get_or_create_user(conn, session.id, telegram_id, username)
-                await set_active_session_for_user(conn, telegram_id, session.id)
-            await message.reply(
-                f"You have joined session {session.id}.\n"
-                "Use /add_playlist or the Add playlist button to send a playlist.",
-                reply_markup=get_persistent_menu_keyboard(is_private),
-            )
+            await join_session_by_code(message, bot, join_code, actor=actor)
             return
 
         async with transaction(conn):
@@ -710,8 +756,13 @@ async def handle_delete_playlist_input(message: Message, bot: Bot, state: FSMCon
     await delete_playlist_from_current_session(message, bot, playlist_id)
 
 
-async def handle_idle_text(message: Message) -> None:
+async def handle_idle_text(message: Message, bot: Bot) -> None:
     """Restore the keyboard when the bot receives unrelated text outside input mode."""
+    join_code = extract_join_code(message.text or "", getattr(bot, "my_username", None))
+    if join_code:
+        await join_session_by_code(message, bot, join_code)
+        return
+
     await message.reply(
         "Use the menu buttons or /help. To add a playlist export, press ➕ Add playlist first.",
         reply_markup=get_persistent_menu_keyboard(message.chat.type == "private"),
