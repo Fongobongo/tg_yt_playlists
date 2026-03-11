@@ -73,6 +73,7 @@ async def test_extract_playlist_url():
 
 
 async def test_extract_join_code():
+    assert extract_join_code("85fb5b2b7d50") == "85fb5b2b7d50"
     assert (
         extract_join_code(
             "https://t.me/watch_yt_together_bot?start=a570fb97e2d8",
@@ -179,6 +180,16 @@ async def test_handle_idle_text_joins_session_from_invite_link(mock_bot):
         await handle_idle_text(message, mock_bot)
 
     join_session.assert_awaited_once_with(message, mock_bot, "a570fb97e2d8")
+
+
+async def test_handle_idle_text_joins_session_from_bare_code(mock_bot):
+    message = make_message("85fb5b2b7d50", chat_type="private")
+    mock_bot.my_username = "watch_yt_together_bot"
+
+    with patch("src.bot.join_session_by_code", new=AsyncMock(return_value=True)) as join_session:
+        await handle_idle_text(message, mock_bot)
+
+    join_session.assert_awaited_once_with(message, mock_bot, "85fb5b2b7d50")
 
 
 async def test_cmd_start_group_creates_session(mock_bot):

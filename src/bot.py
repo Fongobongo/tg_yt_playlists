@@ -56,6 +56,7 @@ UPASTE_URL_REGEX = re.compile(
     r"(?:https?://)?(?:www\.)?upaste\.de/(?:(?:raw/)?[A-Za-z0-9]+)"
 )
 UPASTE_ID_REGEX = re.compile(r"\b([A-Za-z0-9]{3,})\b")
+JOIN_CODE_REGEX = re.compile(r"^[a-f0-9]{12}$", re.IGNORECASE)
 
 PLAYLIST_EXPORT_INSTRUCTIONS = (
     "How to export a playlist:\n"
@@ -127,6 +128,8 @@ def extract_playlist_url(text: str) -> str | None:
 def extract_join_code(text: str, bot_username: str | None = None) -> str | None:
     """Extract a session join code from a Telegram deep-link."""
     candidate = text.strip()
+    if JOIN_CODE_REGEX.fullmatch(candidate):
+        return candidate
     if not candidate.startswith(("http://", "https://")):
         return None
 
