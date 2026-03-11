@@ -149,45 +149,58 @@ def extract_join_code(text: str, bot_username: str | None = None) -> str | None:
 
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
     """Return inline keyboard with main commands."""
-    buttons = [[InlineKeyboardButton(text="🧭 Session", callback_data="cmd:session")]]
-    if is_private:
-        buttons[0].append(InlineKeyboardButton(text="🗂 My sessions", callback_data="cmd:list_sessions"))
-    buttons.extend(
+    buttons = [
         [
-            [InlineKeyboardButton(text="🎵 Playlists", callback_data="cmd:playlists")],
-            [InlineKeyboardButton(text="🎬 Common videos", callback_data="cmd:common")],
-            [
-                InlineKeyboardButton(text="➕ Add playlist", callback_data="cmd:add_playlist"),
-                InlineKeyboardButton(text="🧹 Clear playlists", callback_data="cmd:clear_playlists"),
-            ],
-            [InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear")],
-            [InlineKeyboardButton(text="❓ Help", callback_data="cmd:help")],
-        ]
-    )
+            InlineKeyboardButton(text="🧭 Session", callback_data="cmd:session"),
+            InlineKeyboardButton(text="🗂 My sessions", callback_data="cmd:list_sessions"),
+        ] if is_private else [
+            InlineKeyboardButton(text="🧭 Session", callback_data="cmd:session"),
+            InlineKeyboardButton(text="❓ Help", callback_data="cmd:help"),
+        ],
+        [
+            InlineKeyboardButton(text="🎵 Playlists", callback_data="cmd:playlists"),
+            InlineKeyboardButton(text="🎬 Common videos", callback_data="cmd:common"),
+        ],
+        [
+            InlineKeyboardButton(text="➕ Add playlist", callback_data="cmd:add_playlist"),
+            InlineKeyboardButton(text="🧹 Clear playlists", callback_data="cmd:clear_playlists"),
+            InlineKeyboardButton(text="💥 End all sessions", callback_data="cmd:clear"),
+        ],
+    ]
     if is_private:
-        buttons.append([InlineKeyboardButton(text="🚪 End session", callback_data="cmd:end_session")])
+        buttons.append(
+            [
+                InlineKeyboardButton(text="🚪 End session", callback_data="cmd:end_session"),
+                InlineKeyboardButton(text="❓ Help", callback_data="cmd:help"),
+            ]
+        )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_persistent_menu_keyboard(is_private: bool) -> ReplyKeyboardMarkup:
     """Return a persistent reply keyboard that stays visible in the chat."""
-    rows = [[KeyboardButton(text=MENU_LABELS["session"])]]
+    rows = [
+        [KeyboardButton(text=MENU_LABELS["session"])],
+        [
+            KeyboardButton(text=MENU_LABELS["playlists"]),
+            KeyboardButton(text=MENU_LABELS["common"]),
+        ],
+        [
+            KeyboardButton(text=MENU_LABELS["add_playlist"]),
+            KeyboardButton(text=MENU_LABELS["clear_playlists"]),
+            KeyboardButton(text=MENU_LABELS["clear"]),
+        ],
+    ]
     if is_private:
         rows[0].append(KeyboardButton(text=MENU_LABELS["list_sessions"]))
-    rows.extend(
-        [
-            [KeyboardButton(text=MENU_LABELS["playlists"])],
-            [KeyboardButton(text=MENU_LABELS["common"])],
+        rows.append(
             [
-                KeyboardButton(text=MENU_LABELS["add_playlist"]),
-                KeyboardButton(text=MENU_LABELS["clear_playlists"]),
-            ],
-            [KeyboardButton(text=MENU_LABELS["clear"])],
-            [KeyboardButton(text=MENU_LABELS["help"])],
-        ]
-    )
-    if is_private:
-        rows.append([KeyboardButton(text=MENU_LABELS["end_session"])])
+                KeyboardButton(text=MENU_LABELS["end_session"]),
+                KeyboardButton(text=MENU_LABELS["help"]),
+            ]
+        )
+    else:
+        rows.append([KeyboardButton(text=MENU_LABELS["help"])])
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,
