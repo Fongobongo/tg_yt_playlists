@@ -24,6 +24,7 @@ from src.bot import (
     handle_delete_playlist_input,
     handle_callback,
     handle_idle_text,
+    notify_session_members_about_new_playlist,
     notify_session_members_about_common_videos,
     prompt_for_playlist_url,
 )
@@ -210,6 +211,23 @@ async def test_notify_session_members_about_common_videos(mock_bot):
 
     assert mock_bot.send_message.await_count == 2
     assert "Based on playlists from: @alice, @bob" in mock_bot.send_message.await_args.kwargs["text"]
+
+
+async def test_notify_session_members_about_new_playlist(mock_bot):
+    conn = MagicMock()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+    mock_bot.send_message = AsyncMock()
+    user_stats = [
+        {"telegram_id": 111, "username": "alice", "playlist_count": 1},
+        {"telegram_id": 222, "username": "bob", "playlist_count": 0},
+    ]
+
+    with patch("src.bot.get_session_user_stats", new=AsyncMock(return_value=user_stats)):
+        await notify_session_members_about_new_playlist(mock_bot, "sess123", "@alice", "Watch Later")
+
+    assert mock_bot.send_message.await_count == 2
+    assert "New playlist added by @alice" in mock_bot.send_message.await_args.kwargs["text"]
 
 
 async def test_cmd_start_group_creates_session(mock_bot):

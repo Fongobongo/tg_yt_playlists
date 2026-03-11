@@ -246,6 +246,26 @@ async def notify_session_members_about_common_videos(bot: Bot, session_id: str, 
             logger.warning("Failed to notify user %s about common videos in session %s", telegram_id, session_id)
 
 
+async def notify_session_members_about_new_playlist(
+    bot: Bot, session_id: str, added_by_label: str, playlist_title: str
+) -> None:
+    """Send a new-playlist notification to every participant of the session."""
+    message_text = f"New playlist added by {added_by_label}:\n{playlist_title}"
+    async with bot.db_pool.acquire() as conn:
+        user_stats = await get_session_user_stats(conn, session_id)
+
+    for user in user_stats:
+        telegram_id = user["telegram_id"]
+        try:
+            await bot.send_message(
+                chat_id=telegram_id,
+                text=message_text,
+                reply_markup=get_persistent_menu_keyboard(True),
+            )
+        except Exception:
+            logger.warning("Failed to notify user %s about new playlist in session %s", telegram_id, session_id)
+
+
 async def startup(bot: Bot, dispatcher: Dispatcher) -> None:
     """Initialize database connection pool and ensure tables exist."""
     config: Config = bot.config
@@ -358,6 +378,13 @@ async def add_playlist_to_session(message: Message, bot: Bot, url: str, actor: U
             )
             await create_videos_bulk(conn, playlist.id, playlist_info["videos"])
             common_videos = await compute_common_videos(conn, session.id)
+
+    await notify_session_members_about_new_playlist(
+        bot,
+        session.id,
+        format_session_member_label({"username": username}),
+        playlist_info["title"],
+    )
 
     if not common_videos:
         await message.reply(
