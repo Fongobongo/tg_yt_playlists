@@ -434,12 +434,12 @@ async def get_videos_for_playlist(conn: asyncpg.Connection, playlist_id: str) ->
 
 
 async def get_video_sets_for_session(conn: asyncpg.Connection, session_id: str) -> List[Set[str]]:
-    """Return one deduplicated video-id set per user in the session."""
+    """Return one deduplicated video-id set per user who has at least one playlist in the session."""
     rows = await conn.fetch(
         """
         SELECT u.id AS user_id, p.id AS playlist_id, v.youtube_video_id
         FROM users u
-        LEFT JOIN playlists p ON p.user_id = u.id
+        JOIN playlists p ON p.user_id = u.id
         LEFT JOIN videos v ON v.playlist_id = p.id
         WHERE u.session_id = $1
         """,

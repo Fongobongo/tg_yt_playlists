@@ -210,20 +210,28 @@ def format_video_line(index: int, title: str, url: str, duration_text: str | Non
     return f"{index}. {title}{suffix}\n{url}"
 
 
-def format_common_videos_message(common_videos: list) -> str:
+def format_common_videos_message(common_videos: list, active_user_labels: list[str] | None = None) -> str:
     """Render the common videos response body."""
     lines = [
         format_video_line(index, video.title, video.url, getattr(video, "duration_text", None))
         for index, video in enumerate(common_videos, start=1)
     ]
-    return f"Common videos in this session: {len(common_videos)}\n\n" + "\n\n".join(lines)
+    scope_line = ""
+    if active_user_labels:
+        scope_line = f"Based on playlists from: {', '.join(active_user_labels)}\n\n"
+    return f"Common videos in this session: {len(common_videos)}\n{scope_line}" + "\n\n".join(lines)
 
 
 async def notify_session_members_about_common_videos(bot: Bot, session_id: str, common_videos: list) -> None:
     """Send the common videos message to every participant of the session."""
-    message_text = format_common_videos_message(common_videos)
     async with bot.db_pool.acquire() as conn:
         user_stats = await get_session_user_stats(conn, session_id)
+    active_user_labels = [
+        format_session_member_label(user)
+        for user in user_stats
+        if user["playlist_count"] > 0
+    ]
+    message_text = format_common_videos_message(common_videos, active_user_labels)
 
     for user in user_stats:
         telegram_id = user["telegram_id"]
@@ -379,6 +387,7 @@ async def show_common_videos(message: Message, bot: Bot, actor: User | None = No
                 await message.reply("No session found for this chat. Use /start to begin.")
                 return
         common_videos = await compute_common_videos(conn, session.id)
+        user_stats = await get_session_user_stats(conn, session.id)
 
     if not common_videos:
         await message.reply(
@@ -387,8 +396,13 @@ async def show_common_videos(message: Message, bot: Bot, actor: User | None = No
         )
         return
 
+    active_user_labels = [
+        format_session_member_label(user)
+        for user in user_stats
+        if user["playlist_count"] > 0
+    ]
     await message.reply(
-        format_common_videos_message(common_videos),
+        format_common_videos_message(common_videos, active_user_labels),
         reply_markup=get_persistent_menu_keyboard(is_private),
         disable_web_page_preview=True,
     )

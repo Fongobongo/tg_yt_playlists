@@ -108,3 +108,30 @@ async def test_intersection_across_users(conn):
 
     common = await compute_common_videos(conn, session.id)
     assert {video.youtube_video_id for video in common} == {"v2", "v3"}
+
+
+async def test_intersection_ignores_user_without_playlists(conn):
+    session = await get_or_create_session(conn, chat_id=806, owner_telegram_id=806)
+    user_one = await get_or_create_user(conn, session.id, 666, None)
+    user_two = await get_or_create_user(conn, session.id, 777, None)
+    await get_or_create_user(conn, session.id, 888, None)
+
+    playlist_a = await create_playlist(conn, session.id, user_one.id, "PLA", "A", "urlA")
+    playlist_b = await create_playlist(conn, session.id, user_two.id, "PLB", "B", "urlB")
+
+    await create_videos_bulk(
+        conn,
+        playlist_a.id,
+        [{"youtube_video_id": "v1", "title": "V1", "url": "u1", "position": 1}],
+    )
+    await create_videos_bulk(
+        conn,
+        playlist_b.id,
+        [
+            {"youtube_video_id": "v1", "title": "V1", "url": "u1", "position": 1},
+            {"youtube_video_id": "v2", "title": "V2", "url": "u2", "position": 2},
+        ],
+    )
+
+    common = await compute_common_videos(conn, session.id)
+    assert {video.youtube_video_id for video in common} == {"v1"}

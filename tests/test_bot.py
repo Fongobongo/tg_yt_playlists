@@ -209,6 +209,7 @@ async def test_notify_session_members_about_common_videos(mock_bot):
         await notify_session_members_about_common_videos(mock_bot, "sess123", common_videos)
 
     assert mock_bot.send_message.await_count == 2
+    assert "Based on playlists from: @alice, @bob" in mock_bot.send_message.await_args.kwargs["text"]
 
 
 async def test_cmd_start_group_creates_session(mock_bot):
@@ -287,11 +288,20 @@ async def test_cmd_common_renders_common_videos(mock_bot):
                 SimpleNamespace(title="Video B", url="https://youtu.be/b", duration_text=None),
             ]
         ),
+    ), patch(
+        "src.bot.get_session_user_stats",
+        new=AsyncMock(
+            return_value=[
+                {"telegram_id": 111, "username": "alice", "playlist_count": 1},
+                {"telegram_id": 222, "username": "bob", "playlist_count": 1},
+            ]
+        ),
     ):
         await cmd_common(message, mock_bot)
 
     reply_text = message.reply.call_args[0][0]
     assert "Common videos in this session: 2" in reply_text
+    assert "Based on playlists from: @alice, @bob" in reply_text
     assert "1. Video A (42 минуты)" in reply_text
     assert "2. Video B" in reply_text
 
