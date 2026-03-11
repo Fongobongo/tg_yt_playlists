@@ -14,6 +14,10 @@ class Config:
 
     telegram_bot_token: str
     database_url: str
+    webhook_base_url: str
+    webhook_secret: str
+    webhook_path: str = "/telegram/webhook"
+    port: int = 8080
     log_level: str = "INFO"
 
 
@@ -27,6 +31,10 @@ def load_config() -> Config:
 
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     database_url = os.getenv("DATABASE_URL")
+    webhook_base_url = os.getenv("WEBHOOK_BASE_URL")
+    webhook_secret = os.getenv("WEBHOOK_SECRET")
+    webhook_path = os.getenv("WEBHOOK_PATH", "/telegram/webhook")
+    port_raw = os.getenv("PORT", "8080")
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
     missing = []
@@ -34,9 +42,21 @@ def load_config() -> Config:
         missing.append("TELEGRAM_BOT_TOKEN")
     if not database_url:
         missing.append("DATABASE_URL")
+    if not webhook_base_url:
+        missing.append("WEBHOOK_BASE_URL")
+    if not webhook_secret:
+        missing.append("WEBHOOK_SECRET")
 
     if missing:
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+    if not webhook_path.startswith("/"):
+        raise ValueError("WEBHOOK_PATH must start with '/'")
+
+    try:
+        port = int(port_raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid PORT: {port_raw}") from exc
 
     # Validate log level
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
@@ -45,6 +65,10 @@ def load_config() -> Config:
     return Config(
         telegram_bot_token=telegram_bot_token,
         database_url=database_url,
+        webhook_base_url=webhook_base_url.rstrip("/"),
+        webhook_secret=webhook_secret,
+        webhook_path=webhook_path,
+        port=port,
         log_level=log_level,
     )
 

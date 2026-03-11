@@ -1,81 +1,51 @@
 """Pytest configuration and fixtures."""
 
-import asyncio
 import os
 
-import asyncpg
 import pytest
 from aiogram import Bot
-from aiogram.types import Message, User, Chat
 
-from src.config import load_config
-from src.database import create_pool, create_tables, close_pool
+from src.database import close_pool, create_pool, create_tables
 
 pytest_plugins = ["pytest_asyncio"]
 
 
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+def test_database_url() -> str:
+    """Return the test database URL or skip DB-backed tests."""
+    database_url = os.getenv("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is not set")
+    return database_url
 
 
 @pytest.fixture(scope="session")
-async def pool():
-    """Create a database pool for the test session."""
-    cfg = load_config()
-    # Allow overriding with TEST_DATABASE_URL
-    db_url = os.getenv("TEST_DATABASE_URL", cfg.database_url)
+async def pool(test_database_url):
+    """Create a database pool for integration tests."""
+    pool = await create_pool(test_database_url)
+    await create_tables(pool)
     try:
-        pool = await create_pool(db_url)
-        await create_tables(pool)
         yield pool
     finally:
-        if "pool" in locals():
-            await close_pool(pool)
+        await close_pool(pool)
 
 
 @pytest.fixture
 async def conn(pool):
-    """Provide a fresh transactional connection that rolls back after each test."""
+    """Provide a transactional connection per test."""
     async with pool.acquire() as connection:
-        async with connection.transaction():
-            tr = connection.transaction()
-            await tr.start()
+        tx = connection.transaction()
+        await tx.start()
+        try:
             yield connection
-            await tr.rollback()
+        finally:
+            await tx.rollback()
 
 
 @pytest.fixture
 def mock_bot():
-    """Provide a mock Bot instance with a db_pool attribute."""
+    """Provide a Bot instance with mutable attributes used by handlers."""
     bot = Bot(token="123:ABC")
-    bot.db_pool = None  # will be set by the test if needed
+    bot.db_pool = None
+    bot.my_username = "test_bot"
     return bot
-
-
-@pytest.fixture
-def mock_message(monkeypatch):
-    """Create a mock Message object with minimal fields."""
-
-    def _make_message(
-        text="/start",
-        from_user=None,
-        chat=None,
-        message_id=1,
-    ):
-        if from_user is None:
-            from_user = User(id=123, is_bot=False, first_name="Test")
-        if chat is None:
-            chat = Chat(id=123, type="private")
-        return Message(
-            message_id=message_id,
-            date=0,
-            chat=chat,
-            from_user=from_user,
-            text=text,
-        )
-
-    return _make_message

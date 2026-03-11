@@ -2,133 +2,73 @@
 
 import pytest
 
+from src.database import create_playlist, create_videos_bulk, get_or_create_session, get_or_create_user
 from src.intersection import compute_common_videos
 
 pytestmark = pytest.mark.asyncio
 
 
 async def test_intersection_empty_session(conn):
-    """Session with no playlists returns empty list."""
-    session = await conn.fetchrow(
-        "INSERT INTO sessions (id, chat_id) VALUES (gen_random_uuid(), $1) RETURNING id",
-        800,
-    )
-    common = await compute_common_videos(conn, str(session["id"]))
+    session = await get_or_create_session(conn, chat_id=801, owner_telegram_id=801)
+    common = await compute_common_videos(conn, session.id)
     assert common == []
 
 
 async def test_intersection_single_playlist(conn):
-    """With one playlist, all its videos are common."""
-    session = await conn.fetchrow(
-        "INSERT INTO sessions (id, chat_id) VALUES (gen_random_uuid(), $1) RETURNING id",
-        801,
-    )
-    user = await conn.fetchrow(
-        "INSERT INTO users (id, session_id, telegram_id) VALUES (gen_random_uuid(), $1, $2) RETURNING id",
-        session["id"],
-        111,
-    )
-    playlist = await conn.fetchrow(
-        "INSERT INTO playlists (id, session_id, user_id, youtube_playlist_id, title, url) "
-        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5) RETURNING id",
-        session["id"],
-        user["id"],
-        "PL1",
-        "Playlist 1",
-        "https://...",
-    )
-    await conn.executemany(
-        "INSERT INTO videos (id, playlist_id, youtube_video_id, title, url, position) "
-        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)",
+    session = await get_or_create_session(conn, chat_id=802, owner_telegram_id=802)
+    user = await get_or_create_user(conn, session.id, 111, None)
+    playlist = await create_playlist(conn, session.id, user.id, "PL1", "Playlist 1", "https://...")
+    await create_videos_bulk(
+        conn,
+        playlist.id,
         [
-            (playlist["id"], "v1", "V1", "u1", 1),
-            (playlist["id"], "v2", "V2", "u2", 2),
+            {"youtube_video_id": "v1", "title": "V1", "url": "u1", "position": 1},
+            {"youtube_video_id": "v2", "title": "V2", "url": "u2", "position": 2},
         ],
     )
-    common = await compute_common_videos(conn, str(session["id"]))
-    assert len(common) == 2
-    ids = {v.youtube_video_id for v in common}
-    assert ids == {"v1", "v2"}
+
+    common = await compute_common_videos(conn, session.id)
+    assert {video.youtube_video_id for video in common} == {"v1", "v2"}
 
 
 async def test_intersection_multiple_common(conn):
-    """Two playlists with some overlap."""
-    session = await conn.fetchrow(
-        "INSERT INTO sessions (id, chat_id) VALUES (gen_random_uuid(), $1) RETURNING id",
-        802,
-    )
-    user = await conn.fetchrow(
-        "INSERT INTO users (id, session_id, telegram_id) VALUES (gen_random_uuid(), $1, $2) RETURNING id",
-        session["id"],
-        222,
-    )
-    # Playlist A: v1, v2
-    pA = await conn.fetchrow(
-        "INSERT INTO playlists (id, session_id, user_id, youtube_playlist_id, title, url) "
-        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5) RETURNING id",
-        session["id"],
-        user["id"],
-        "PLA",
-        "A",
-        "urlA",
-    )
-    await conn.executemany(
-        "INSERT INTO videos (id, playlist_id, youtube_video_id, title, url, position) "
-        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)",
+    session = await get_or_create_session(conn, chat_id=803, owner_telegram_id=803)
+    user = await get_or_create_user(conn, session.id, 222, None)
+    playlist_a = await create_playlist(conn, session.id, user.id, "PLA", "A", "urlA")
+    playlist_b = await create_playlist(conn, session.id, user.id, "PLB", "B", "urlB")
+    await create_videos_bulk(
+        conn,
+        playlist_a.id,
         [
-            (pA["id"], "v1", "V1", "u1", 1),
-            (pA["id"], "v2", "V2", "u2", 2),
+            {"youtube_video_id": "v1", "title": "V1", "url": "u1", "position": 1},
+            {"youtube_video_id": "v2", "title": "V2", "url": "u2", "position": 2},
         ],
     )
-    # Playlist B: v2, v3
-    pB = await conn.fetchrow(
-        "INSERT INTO playlists (id, session_id, user_id, youtube_playlist_id, title, url) "
-        "VALUES (gen_random_uuid(), $1, $2, $3, $4, $5) RETURNING id",
-        session["id"],
-        user["id"],
-        "PLB",
-        "B",
-        "urlB",
-    )
-    await conn.executemany(
-        "INSERT INTO videos (id, playlist_id, youtube_video_id, title, url, position) "
-        "Values (gen_random_uuid(), $1, $2, $3, $4, $5)",
+    await create_videos_bulk(
+        conn,
+        playlist_b.id,
         [
-            (pB["id"], "v2", "V2", "u2", 1),
-            (pB["id"], "v3", "V3", "u3", 2),
+            {"youtube_video_id": "v2", "title": "V2", "url": "u2", "position": 1},
+            {"youtube_video_id": "v3", "title": "V3", "url": "u3", "position": 2},
         ],
     )
-    common = await compute_common_videos(conn, str(session["id"]))
+
+    common = await compute_common_videos(conn, session.id)
     assert len(common) == 1
     assert common[0].youtube_video_id == "v2"
 
 
 async def test_intersection_none(conn):
-    """Three playlists with no common video."""
-    session = await conn.fetchrow(
-        "INSERT INTO sessions (id, chat_id) VALUES (gen_random_uuid(), $1) RETURNING id",
-        803,
-    )
-    user = await conn.fetchrow(
-        "INSERT INTO users (id, session_id, telegram_id) VALUES (gen_random_uuid(), $1, $2) RETURNING id",
-        session["id"],
-        333,
-    )
-    # Each playlist has distinct videos
-    for i, vids in enumerate([["a"], ["b"], ["c"]]):
-        pl = await conn.fetchrow(
-            "INSERT INTO playlists (id, session_id, user_id, youtube_playlist_id, title, url) "
-            "Values (gen_random_uuid(), $1, $2, $3, $4, $5) RETURNING id",
-            session["id"],
-            user["id"],
-            f"PL{i}",
-            f"P{i}",
-            "url",
+    session = await get_or_create_session(conn, chat_id=804, owner_telegram_id=804)
+    user = await get_or_create_user(conn, session.id, 333, None)
+
+    for index, video_id in enumerate(("a", "b", "c"), start=1):
+        playlist = await create_playlist(conn, session.id, user.id, f"PL{index}", f"P{index}", "url")
+        await create_videos_bulk(
+            conn,
+            playlist.id,
+            [{"youtube_video_id": video_id, "title": f"V{video_id}", "url": f"u{video_id}", "position": 1}],
         )
-        await conn.executemany(
-            "INSERT INTO videos (id, playlist_id, youtube_video_id, title, url, position) "
-            "Values (gen_random_uuid(), $1, $2, $3, $4, $5)",
-            [(pl["id"], v, f"V{v}", f"u{v}", 1) for v in vids],
-        )
-    common = await compute_common_videos(conn, str(session["id"]))
+
+    common = await compute_common_videos(conn, session.id)
     assert common == []

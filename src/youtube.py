@@ -41,7 +41,7 @@ async def fetch_playlist_info(playlist_url: str) -> Dict:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = await loop.run_in_executor(None, ydl.extract_info, playlist_url, False)
 
-    if "entries" not in info:
+    if "entries" not in info or not info["entries"]:
         raise ValueError("The provided URL does not seem to be a playlist.")
 
     playlist_title = info.get("title", "Untitled Playlist")

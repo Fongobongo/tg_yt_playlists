@@ -1,0 +1,25 @@
+[project]
+name = "tg-yt"
+version = "0.1.0"
+description = "Telegram bot for finding intersections across YouTube playlists"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiogram==3.11.0",
+    "asyncpg==0.30.0",
+    "python-dotenv==1.0.1",
+    "yt-dlp==2025.3.27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.2.2",
+    "pytest-asyncio==0.24.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv]
+package = false

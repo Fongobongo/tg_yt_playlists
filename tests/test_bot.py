@@ -1,463 +1,377 @@
 """Tests for bot handlers."""
 
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
-import re
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.bot import (
-    extract_playlist_url,
-    handle_playlist_url,
-    cmd_start,
-    cmd_session,
-    cmd_playlists,
-    cmd_clear_playlists,
-    cmd_delete_playlist,
+    SessionLimitReachedError,
+    cmd_add_playlist,
     cmd_clear,
-    cmd_leave,
+    cmd_clear_playlists,
+    cmd_common,
+    cmd_delete_playlist,
+    cmd_end_session,
+    cmd_list_sessions,
+    cmd_playlists,
+    cmd_start,
+    extract_playlist_url,
+    get_main_menu_keyboard,
+    handle_add_playlist_input,
+    handle_delete_playlist_input,
+    handle_callback,
+    prompt_for_playlist_url,
 )
 
 pytestmark = pytest.mark.asyncio
 
 
-def test_extract_playlist_url():
-    assert extract_playlist_url("https://www.youtube.com/playlist?list=PL123") == "https://www.youtube.com/playlist?list=PL123"
-    assert extract_playlist_url("http://youtube.com/playlist?list=PL456&feature=share") == "https://www.youtube.com/playlist?list=PL456"
-    assert extract_playlist_url("Check this: www.youtube.com/playlist?list=PL789") == "https://www.youtube.com/playlist?list=PL789"
-    assert extract_playlist_url("Just a normal message") is None
-    assert extract_playlist_url("") is None
+class DummyTransaction:
+    def __init__(self):
+        self.start = AsyncMock()
+        self.rollback = AsyncMock()
+        self.commit = AsyncMock()
 
 
-async def test_handle_playlist_url(mock_bot):
-    # Create a mock message with a playlist URL
-    msg = MagicMock()
-    msg.text = "Here: https://www.youtube.com/playlist?list=PLABC"
-    msg.chat = MagicMock()
-    msg.chat.id = 12345
-    msg.chat.type = "group"  # not private => group branch
-    msg.from_user = MagicMock()
-    msg.from_user.id = 999
-    msg.from_user.username = "tester"
-    msg.reply = AsyncMock()
-
-    bot = mock_bot
-    # Prepare a dummy DB pool acquire that yields a dummy connection
-    class DummyConn:
-        async def transaction(self):
-            # Return an async context manager that yields self
-            return self
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    class DummyACM:
-        async def __aenter__(self):
-            return DummyConn()
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    bot.db_pool.acquire = lambda: DummyACM()
-
-    # Mock database functions and youtube fetch
-    mock_session = MagicMock(id="session1")
-    mock_user = MagicMock(id="user1")
-    mock_playlist = MagicMock(id="playlist1")
-    mock_common = [
-        MagicMock(youtube_video_id="v1", title="Video 1", url="https://youtu.be/v1"),
-        MagicMock(youtube_video_id="v2", title="Video 2", url="https://youtu.be/v2"),
-    ]
-
-    with patch("src.bot.get_or_create_session", return_value=mock_session) as m_session, \
-         patch("src.bot.get_or_create_user", return_value=mock_user) as m_user, \
-         patch("src.bot.create_playlist", return_value=mock_playlist) as m_pl, \
-         patch("src.bot.create_videos_bulk") as m_videos, \
-         patch("src.bot.compute_common_videos", return_value=mock_common) as m_common, \
-         patch("src.bot.fetch_playlist_info") as m_fetch:
-
-        m_fetch.return_value = {
-            "youtube_playlist_id": "PLABC",
-            "title": "Test Playlist",
-            "url": "https://www.youtube.com/playlist?list=PLABC",
-            "videos": [
-                {"youtube_video_id": "v1", "title": "Video 1", "url": "u1", "position": 1},
-            ],
-        }
-
-        await handle_playlist_url(msg, bot)
-
-    # Assertions
-    m_session.assert_awaited_once()
-    m_user.assert_awaited_once()
-    m_pl.assert_awaited_once()
-    m_videos.assert_awaited_once()
-    m_common.assert_awaited_once()
-    m_fetch.assert_awaited_once()
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Common videos in this session:" in reply_text
-    assert "Video 1" in reply_text
-    assert "Video 2" in reply_text
-    assert "https://youtu.be/v1" in reply_text
-    assert "https://youtu.be/v2" in reply_text
+class DummyState:
+    def __init__(self):
+        self.set_state = AsyncMock()
+        self.clear = AsyncMock()
 
 
-async def test_cmd_start(mock_bot):
-    bot = mock_bot
-
-    class DummyConn:
-        pass
-
-    class DummyACM:
-        async def __aenter__(self):
-            return DummyConn()
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    bot.db_pool.acquire = lambda: DummyACM()
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.chat.type = "group"  # group chat, no active session
-    msg.from_user = MagicMock(id=111, username="user")
-    msg.reply = AsyncMock()
-
-    mock_session = MagicMock(id="s1", chat_id=123, short_code="abc123")
-    mock_user = MagicMock(id="u1")
-
-    with patch("src.bot.get_or_create_session", return_value=mock_session) as m_session, \
-         patch("src.bot.get_or_create_user", return_value=mock_user) as m_user:
-        await cmd_start(msg, bot)
-
-    m_session.assert_awaited_once()
-    m_user.assert_awaited_once()
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Hello!" in reply_text or "YouTube" in reply_text
-    assert "/session" in reply_text  # includes new command
-
-
-async def test_cmd_playlists(mock_bot):
-    bot = mock_bot
-
-    class DummyConn:
-        pass
-
-    class DummyConnWithAcquire:
-        def __init__(self, conn):
-            self.conn = conn
-        async def __aenter__(self):
-            return self.conn
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.reply = AsyncMock()
-
-    mock_playlists = [
-        MagicMock(title="Playlist A", youtube_playlist_id="PL_A", url="https://youtube.com/playlist?list=PL_A"),
-        MagicMock(title="Playlist B", youtube_playlist_id="PL_B", url="https://youtube.com/playlist?list=PL_B"),
-    ]
-
-    with patch("src.bot.get_playlists_for_session", return_value=mock_playlists):
-        await cmd_playlists(msg, bot)
-
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Playlists in this session:" in reply_text
-    assert "Playlist A" in reply_text
-    assert "PL_A" in reply_text
-    assert "Playlist B" in reply_text
-
-
-async def test_cmd_clear_playlists_success(mock_bot):
-    bot = mock_bot
-
-    class DummyConnWithAcquire:
-        def __init__(self, conn):
-            self.conn = conn
-        async def __aenter__(self):
-            return self.conn
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
-    mock_conn.execute = AsyncMock(return_value="DELETE 2")
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.reply = AsyncMock()
-
-    with patch("src.bot.delete_all_playlists_in_session", return_value=2) as m_delete:
-        await cmd_clear_playlists(msg, bot)
-
-    m_delete.assert_awaited_once()
-    # Check that we passed the session_id to delete_all_playlists_in_session
-    call_args = m_delete.call_args[0]
-    assert call_args[1] == "sess123"  # second arg is session_id
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Deleted 2 playlist(s) from this session." in reply_text
-
-
-async def test_cmd_clear_playlists_no_session(mock_bot):
-    bot = mock_bot
-
-    class DummyConnWithAcquire:
-        def __init__(self, conn):
-            self.conn = conn
-        async def __aenter__(self):
-            return self.conn
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.fetchrow = AsyncMock(return_value=None)  # No session
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.reply = AsyncMock()
-
-    await cmd_clear_playlists(msg, bot)
-
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "No session found." in reply_text
-
-
-async def test_cmd_delete_playlist_success(mock_bot):
-    bot = mock_bot
-
-    class DummyConn:
-        pass
-
-    class DummyConnWithAcquire:
-        def __init__(self, conn):
-            self.conn = conn
-        async def __aenter__(self):
-            return self.conn
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    # session exists
-    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
-    # execute returns "DELETE 1"
-    mock_conn.execute = AsyncMock(return_value="DELETE 1")
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.text = "/delete PL_TO_DELETE"
-    msg.reply = AsyncMock()
-
-    await cmd_delete_playlist(msg, bot)
-
-    mock_conn.execute.assert_awaited_once()
-    # Check the query args
-    call_args = mock_conn.execute.call_args[0]
-    assert "DELETE FROM playlists WHERE session_id = $1 AND youtube_playlist_id = $2" in call_args[0]
-    assert call_args[1] == "sess123"
-    assert call_args[2] == "PL_TO_DELETE"
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Deleted 1 playlist(s) with YouTube ID 'PL_TO_DELETE'" in reply_text
-
-
-async def test_cmd_delete_playlist_not_found(mock_bot):
-    bot = mock_bot
-
-    class DummyConn:
-        pass
-
-    class DummyConnWithAcquire:
-        def __init__(self, conn):
-            self.conn = conn
-        async def __aenter__(self):
-            return self.conn
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess123"})
-    mock_conn.execute = AsyncMock(return_value="DELETE 0")
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.text = "/delete UNKNOWN"
-    msg.reply = AsyncMock()
-
-    await cmd_delete_playlist(msg, bot)
-
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "No playlist with YouTube ID 'UNKNOWN' found" in reply_text
-
-
-class DummyConnWithAcquire:
+class DummyAcquire:
     def __init__(self, conn):
         self.conn = conn
+
     async def __aenter__(self):
         return self.conn
+
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
 
-async def test_cmd_session_group(mock_bot):
-    bot = mock_bot
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.fetchrow = AsyncMock(return_value={"id": "sess1", "chat_id": 123, "short_code": "abc"})
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.chat.type = "group"
-    msg.reply = AsyncMock()
-
-    await cmd_session(msg, bot)
-
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Session ID: sess1" in reply_text
-    assert "Chat ID: 123" in reply_text
-    assert "Short code: abc" in reply_text
+def make_message(text: str, chat_type: str = "group"):
+    message = MagicMock()
+    message.text = text
+    message.chat = SimpleNamespace(id=123, type=chat_type)
+    message.from_user = SimpleNamespace(id=456, username="tester")
+    message.reply = AsyncMock()
+    return message
 
 
-async def test_cmd_session_private_with_active(mock_bot):
-    bot = mock_bot
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    # First fetch active session returns a row
-    # It will call get_active_session_for_user -> fetchrow returns session dict
-    # The implementation uses two queries? Actually get_active_session_for_user joins. So we can patch get_active_session_for_user at the function level.
-    # Simpler: patch at database level: we'll mock get_active_session_for_user's result by having the bot code call it and we return session.
-    # But we cannot easily patch the function inside cmd_session via conftest; better to patch at module level.
-    # We'll instead just test that join resulted in session being set by patching set_active_session_for_user.
-    # Let's test the /start join flow separately.
-    # For cmd_session, we'll test the private branch when there is no active session, and when there is.
-    # Let's do two tests: one with active session, one without.
-    # We'll create mock session object and patch get_active_session_for_user and get_session_by_chat_id, using return values.
-    mock_session = MagicMock(id="sess_priv", chat_id=456, short_code="code456")
-    with patch("src.bot.get_active_session_for_user", return_value=mock_session) as mock_get_active, \
-         patch("src.bot.get_session_by_chat_id", return_value=None):
-        bot = mock_bot
-        bot.db_pool = MagicMock()
-        bot.db_pool.acquire = lambda: DummyConnWithAcquire(MagicMock())
-        msg = MagicMock()
-        msg.chat = MagicMock()
-        msg.chat.id = 456
-        msg.chat.type = "private"
-        msg.reply = AsyncMock()
-        await cmd_session(msg, bot)
-        mock_get_active.assert_awaited_once()
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "sess_priv" in reply_text
+async def test_extract_playlist_url():
+    assert extract_playlist_url("https://www.youtube.com/playlist?list=PL123") == (
+        "https://www.youtube.com/playlist?list=PL123"
+    )
+    assert extract_playlist_url("http://youtube.com/playlist?list=PL456&feature=share") == (
+        "https://www.youtube.com/playlist?list=PL456"
+    )
+    assert extract_playlist_url("Check this: www.youtube.com/playlist?list=PL789") == (
+        "https://www.youtube.com/playlist?list=PL789"
+    )
+    assert extract_playlist_url("Just a normal message") is None
 
 
-async def test_cmd_start_join_code_private(mock_bot):
-    bot = mock_bot
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-    # Mock get_session_by_short_code to return a session
-    mock_session = MagicMock(id="joined_sess", chat_id=789, short_code="JOINME")
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 999
-    msg.chat.type = "private"
-    msg.from_user = MagicMock(id=555, username="joiner")
-    msg.text = "/start JOINME"
-    msg.reply = AsyncMock()
+async def test_prompt_for_playlist_url_sets_state():
+    message = make_message("/add_playlist")
+    state = DummyState()
 
-    with patch("src.bot.get_session_by_short_code", return_value=mock_session) as mock_get_code, \
-         patch("src.bot.get_or_create_user") as mock_user_cre, \
-         patch("src.bot.set_active_session_for_user") as mock_set_active:
-        await cmd_start(msg, bot)
-    mock_get_code.assert_awaited_once()
-    mock_user_cre.assert_awaited_once()
-    mock_set_active.assert_awaited_once()
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "joined session" in reply_text
+    await prompt_for_playlist_url(message, state)
+
+    state.set_state.assert_awaited_once()
+    message.reply.assert_awaited_once()
+    assert "Send a YouTube playlist URL" in message.reply.call_args[0][0]
 
 
-async def test_cmd_leave_private(mock_bot):
-    bot = mock_bot
-    bot.db_pool = MagicMock()
-    mock_conn = MagicMock()
-    bot.db_pool.acquire = lambda: DummyConnWithAcquire(mock_conn)
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.type = "private"
-    msg.from_user = MagicMock(id=111)
-    msg.reply = AsyncMock()
-    with patch("src.bot.clear_active_session_for_user") as mock_clear:
-        await cmd_leave(msg, bot)
-    mock_clear.assert_awaited_once()
-    msg.reply.assert_awaited_once()
-    assert "left" in msg.reply.call_args[0][0]
+async def test_cmd_add_playlist_without_argument_prompts_for_url(mock_bot):
+    message = make_message("/add_playlist")
+    state = DummyState()
+
+    await cmd_add_playlist(message, mock_bot, state)
+
+    state.set_state.assert_awaited_once()
+    message.reply.assert_awaited_once()
 
 
-async def test_cmd_leave_not_private(mock_bot):
-    bot = mock_bot
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.type = "group"
-    msg.reply = AsyncMock()
-    await cmd_leave(msg, bot)
-    msg.reply.assert_awaited_once()
-    assert "only in private" in msg.reply.call_args[0][0]
+async def test_cmd_add_playlist_with_argument_processes_url(mock_bot):
+    message = make_message("/add_playlist https://www.youtube.com/playlist?list=PLABC")
+    state = DummyState()
+
+    with patch("src.bot.add_playlist_to_session", new=AsyncMock()) as add_playlist:
+        await cmd_add_playlist(message, mock_bot, state)
+
+    state.clear.assert_awaited_once()
+    add_playlist.assert_awaited_once_with(
+        message,
+        mock_bot,
+        "https://www.youtube.com/playlist?list=PLABC",
+    )
 
 
-async def test_cmd_delete_playlist_missing_arg(mock_bot):
-    bot = mock_bot
-    bot.db_pool = MagicMock()
+async def test_handle_add_playlist_input_accepts_only_playlist_urls(mock_bot):
+    message = make_message("not a playlist")
+    state = DummyState()
 
-    class DummyConn:
-        pass
+    await handle_add_playlist_input(message, mock_bot, state)
 
-    class DummyACM:
-        async def __aenter__(self):
-            return DummyConn()
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
+    state.clear.assert_not_called()
+    message.reply.assert_awaited_once()
+    assert "I need a YouTube playlist URL" in message.reply.call_args[0][0]
 
-    bot.db_pool.acquire = lambda: DummyACM()
 
-    msg = MagicMock()
-    msg.chat = MagicMock()
-    msg.chat.id = 123
-    msg.text = "/delete"
-    msg.reply = AsyncMock()
+async def test_cmd_start_group_creates_session(mock_bot):
+    message = make_message("/start", chat_type="group")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+    session = SimpleNamespace(id="s1", short_code="abc123", chat_id=123)
 
-    await cmd_delete_playlist(msg, bot)
+    with patch("src.bot.get_or_create_session", new=AsyncMock(return_value=session)) as get_session, patch(
+        "src.bot.get_or_create_user", new=AsyncMock()
+    ):
+        await cmd_start(message, mock_bot)
 
-    msg.reply.assert_awaited_once()
-    reply_text = msg.reply.call_args[0][0]
-    assert "Usage: /delete <youtube_playlist_id>" in reply_text
+    get_session.assert_awaited_once()
+    message.reply.assert_awaited_once()
+    assert "Group session is ready." in message.reply.call_args[0][0]
+
+
+async def test_cmd_start_rejects_session_limit(mock_bot):
+    message = make_message("/start", chat_type="group")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch(
+        "src.bot.get_or_create_session",
+        new=AsyncMock(side_effect=SessionLimitReachedError("limit")),
+    ):
+        await cmd_start(message, mock_bot)
+
+    assert "at most 5 sessions" in message.reply.call_args[0][0]
+
+
+async def test_cmd_playlists_renders_list(mock_bot):
+    message = make_message("/playlists")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    session = SimpleNamespace(id="sess123")
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
+        "src.bot.get_playlists_for_session",
+        new=AsyncMock(
+            return_value=[
+                SimpleNamespace(title="Playlist A", youtube_playlist_id="PL_A", url="https://youtube.com/a"),
+                SimpleNamespace(title="Playlist B", youtube_playlist_id="PL_B", url="https://youtube.com/b"),
+            ]
+        ),
+    ):
+        await cmd_playlists(message, mock_bot)
+
+    message.reply.assert_awaited_once()
+    reply_text = message.reply.call_args[0][0]
+    assert "Playlists in this session" in reply_text
+    assert "Playlist A" in reply_text
+    assert "PL_B" in reply_text
+
+
+async def test_cmd_common_renders_common_videos(mock_bot):
+    message = make_message("/common")
+    conn = MagicMock()
+    session = SimpleNamespace(id="sess123")
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
+        "src.bot.compute_common_videos",
+        new=AsyncMock(
+            return_value=[
+                SimpleNamespace(title="Video A", url="https://youtu.be/a"),
+                SimpleNamespace(title="Video B", url="https://youtu.be/b"),
+            ]
+        ),
+    ):
+        await cmd_common(message, mock_bot)
+
+    reply_text = message.reply.call_args[0][0]
+    assert "Common videos in this session" in reply_text
+    assert "Video A" in reply_text
+
+
+async def test_cmd_clear_playlists_success(mock_bot):
+    message = make_message("/clear_playlists")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    session = SimpleNamespace(id="sess123")
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
+        "src.bot.delete_all_playlists_in_session", new=AsyncMock(return_value=2)
+    ) as delete_all:
+        await cmd_clear_playlists(message, mock_bot)
+
+    delete_all.assert_awaited_once_with(conn, "sess123")
+    assert "Deleted 2 playlist(s)" in message.reply.call_args[0][0]
+
+
+async def test_cmd_delete_playlist_success(mock_bot):
+    message = make_message("/delete_playlist PL123")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    session = SimpleNamespace(id="sess123")
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
+        "src.bot.delete_playlist_by_youtube_id", new=AsyncMock(return_value=1)
+    ) as delete_playlist:
+        await cmd_delete_playlist(message, mock_bot)
+
+    delete_playlist.assert_awaited_once_with(conn, "sess123", "PL123")
+    assert "Deleted 1 playlist(s)" in message.reply.call_args[0][0]
+
+
+async def test_cmd_clear_deletes_session(mock_bot):
+    message = make_message("/clear")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    session = SimpleNamespace(id="sess123")
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
+        "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=456)
+    ), patch(
+        "src.bot.delete_session", new=AsyncMock(return_value=True)
+    ) as delete_session:
+        await cmd_clear(message, mock_bot)
+
+    delete_session.assert_awaited_once_with(conn, "sess123")
+    assert "Session data cleared" in message.reply.call_args[0][0]
+
+
+async def test_cmd_clear_rejected_for_shared_private_session(mock_bot):
+    message = make_message("/clear", chat_type="private")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    session = SimpleNamespace(id="sess123", chat_id=999)
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_active_session_for_user", new=AsyncMock(return_value=session)), patch(
+        "src.bot.delete_session", new=AsyncMock()
+    ) as delete_session:
+        await cmd_clear(message, mock_bot)
+
+    delete_session.assert_not_awaited()
+    assert "Only the session owner can delete" in message.reply.call_args[0][0]
+
+
+async def test_cmd_clear_rejected_for_group_non_owner(mock_bot):
+    message = make_message("/clear", chat_type="group")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    session = SimpleNamespace(id="sess123")
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.get_session_by_chat_id", new=AsyncMock(return_value=session)), patch(
+        "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=999)
+    ), patch("src.bot.delete_session", new=AsyncMock()) as delete_session:
+        await cmd_clear(message, mock_bot)
+
+    delete_session.assert_not_awaited()
+    assert "Only the session owner can delete this group session." in message.reply.call_args[0][0]
+
+
+async def test_cmd_end_session_private(mock_bot):
+    message = make_message("/end_session", chat_type="private")
+    conn = MagicMock()
+    conn.transaction.return_value = DummyTransaction()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.clear_active_session_for_user", new=AsyncMock()) as clear_active:
+        await cmd_end_session(message, mock_bot)
+
+    clear_active.assert_awaited_once_with(conn, 456)
+    assert "Current session closed" in message.reply.call_args[0][0]
+
+
+async def test_cmd_end_session_rejected_in_group(mock_bot):
+    message = make_message("/end_session", chat_type="group")
+
+    await cmd_end_session(message, mock_bot)
+
+    message.reply.assert_awaited_once()
+    assert "works only in private chats" in message.reply.call_args[0][0]
+
+
+async def test_cmd_list_sessions_includes_user_and_common_stats(mock_bot):
+    message = make_message("/list_sessions", chat_type="private")
+    conn = MagicMock()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+    sessions = [SimpleNamespace(id="sess123", chat_id=123, created_at=SimpleNamespace(date=lambda: "2026-03-11"), short_code="abc123")]
+    active = SimpleNamespace(id="sess123")
+    user_stats = [
+        {"telegram_id": 111, "username": "alice", "playlist_count": 2},
+        {"telegram_id": 222, "username": None, "playlist_count": 1},
+    ]
+
+    with patch("src.bot.get_sessions_for_user", new=AsyncMock(return_value=sessions)), patch(
+        "src.bot.get_active_session_for_user", new=AsyncMock(return_value=active)
+    ), patch("src.bot.get_session_user_stats", new=AsyncMock(return_value=user_stats)), patch(
+        "src.bot.get_common_video_count", new=AsyncMock(return_value=3)
+    ):
+        await cmd_list_sessions(message, mock_bot)
+
+    reply_text = message.reply.call_args[0][0]
+    assert "Users: @alice, user-without-username" in reply_text
+    assert "Playlists per user: @alice: 2, user-without-username: 1" in reply_text
+    assert "Common videos: 3" in reply_text
+
+
+async def test_handle_delete_playlist_input_deletes_playlist(mock_bot):
+    message = make_message("PL123")
+    state = DummyState()
+
+    with patch("src.bot.delete_playlist_from_current_session", new=AsyncMock()) as delete_playlist:
+        await handle_delete_playlist_input(message, mock_bot, state)
+
+    state.clear.assert_awaited_once()
+    delete_playlist.assert_awaited_once_with(message, mock_bot, "PL123")
+
+
+async def test_group_keyboard_hides_my_sessions():
+    keyboard = get_main_menu_keyboard(False)
+    texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "My sessions" not in texts
+    assert "Common videos" in texts
+
+
+async def test_delete_session_callback_requires_owner(mock_bot):
+    callback = MagicMock()
+    callback.data = "delete_session:sess123"
+    callback.from_user = SimpleNamespace(id=456)
+    callback.message = make_message("button", chat_type="private")
+    callback.answer = AsyncMock()
+    state = DummyState()
+    conn = MagicMock()
+    mock_bot.db_pool = MagicMock()
+    mock_bot.db_pool.acquire = lambda: DummyAcquire(conn)
+
+    with patch("src.bot.user_is_member_of_session", new=AsyncMock(return_value=True)), patch(
+        "src.bot.get_session_owner_telegram_id", new=AsyncMock(return_value=999)
+    ), patch("src.bot.delete_session", new=AsyncMock()) as delete_session:
+        await handle_callback(callback, mock_bot, state)
+
+    delete_session.assert_not_awaited()
+    callback.answer.assert_awaited()
+    assert "Only the session owner can delete this session." in callback.answer.call_args[0][0]

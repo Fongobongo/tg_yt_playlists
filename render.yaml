@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: tg-yt-bot
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: WEBHOOK_BASE_URL
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: WEBHOOK_PATH
+        value: /telegram/webhook
+      - key: LOG_LEVEL
+        value: INFO

@@ -32,6 +32,12 @@ async def test_fetch_playlist_info_success():
         def __init__(self, opts):
             pass
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
         def extract_info(self, url, download):
             return mock_info
 
@@ -59,6 +65,12 @@ async def test_fetch_playlist_info_no_entries():
         def __init__(self, opts):
             pass
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
         def extract_info(self, url, download):
             return mock_info
 
@@ -72,6 +84,12 @@ async def test_fetch_playlist_info_download_error():
     class MockYoutubeDL:
         def __init__(self, opts):
             pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
 
         def extract_info(self, url, download):
             raise Exception("network failure")

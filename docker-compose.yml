@@ -1,13 +1,18 @@
-version: '3.8'
-
 services:
   bot:
     build: .
     container_name: tg_yt_bot
+    env_file:
+      - .env
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      DATABASE_URL: sqlite:///data/tg_yt.db
-      LOG_LEVEL: DEBUG
-    volumes:
-      - ./data:/app/data   # persist DB and logs on host
+      DATABASE_URL: ${DATABASE_URL}
+      WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      WEBHOOK_PATH: ${WEBHOOK_PATH:-/telegram/webhook}
+      PORT: ${PORT:-8080}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["uv", "run", "python", "-u", "-m", "src.bot"]
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
     restart: unless-stopped
