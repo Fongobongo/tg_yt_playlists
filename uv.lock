@@ -335,7 +335,6 @@ dependencies = [
     { name = "aiogram" },
     { name = "asyncpg" },
     { name = "python-dotenv" },
-    { name = "yt-dlp" },
 ]
 
 [package.dev-dependencies]
@@ -349,7 +348,6 @@ requires-dist = [
     { name = "aiogram", specifier = "==3.11.0" },
     { name = "asyncpg", specifier = "==0.30.0" },
     { name = "python-dotenv", specifier = "==1.0.1" },
-    { name = "yt-dlp", specifier = "==2025.3.27" },
 ]
 
 [package.metadata.requires-dev]
@@ -397,13 +395,4 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/be/25216a49daeeb7af2bec0db22d5e7df08ed1d7c9f65d78b14f3b74fd72fc/yarl-1.23.0-cp312-cp312-win_amd64.whl", hash = "sha256:f69f57305656a4852f2a7203efc661d8c042e6cc67f7acd97d8667fb448a426e", size = 87674, upload-time = "2026-03-01T22:05:38.171Z" },
     { url = "https://files.pythonhosted.org/packages/d2/35/aeab955d6c425b227d5b7247eafb24f2653fedc32f95373a001af5dfeb9e/yarl-1.23.0-cp312-cp312-win_arm64.whl", hash = "sha256:6e87a6e8735b44816e7db0b2fbc9686932df473c826b0d9743148432e10bb9b9", size = 81879, upload-time = "2026-03-01T22:05:40.006Z" },
     { url = "https://files.pythonhosted.org/packages/69/68/c8739671f5699c7dc470580a4f821ef37c32c4cb0b047ce223a7f115757f/yarl-1.23.0-py3-none-any.whl", hash = "sha256:a2df6afe50dea8ae15fa34c9f824a3ee958d785fd5d089063d960bae1daa0a3f", size = 48288, upload-time = "2026-03-01T22:07:51.388Z" },
-]
-
-[[package]]
-name = "yt-dlp"
-version = "2025.3.27"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8c/cf/b944738d1508948e00b6d71b2305448ca4ea18fcc1c6ba0c2118270f2e82/yt_dlp-2025.3.27.tar.gz", hash = "sha256:30cb078f803b539b2a66521c5ec86d328c07f74aeca9440069e58619c299cf15", size = 2963084, upload-time = "2025-03-27T23:55:39.129Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9d/8a/d4a533d5bb37e6459fbbf3f801a5f8bffafe78e364a9981ab571a7038db8/yt_dlp-2025.3.27-py3-none-any.whl", hash = "sha256:bef4105af0f25c13c1a505daf46142af45d9312dc2c3553651db083e6860e641", size = 3221898, upload-time = "2025-03-27T23:55:36.753Z" },
 ]

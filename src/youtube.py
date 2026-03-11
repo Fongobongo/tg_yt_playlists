@@ -1,15 +1,10 @@
-"""Playlist fetching from YouTube or exported upaste JSON."""
+"""Playlist fetching from exported upaste JSON."""
 
 import asyncio
 import json
-import logging
 from typing import Dict, List
 from urllib.parse import urlsplit
 from urllib.request import urlopen
-
-import yt_dlp
-
-logger = logging.getLogger(__name__)
 
 
 def normalize_upaste_url(url: str) -> str | None:
@@ -75,67 +70,22 @@ def _fetch_upaste_playlist_info_sync(source_url: str) -> Dict:
 
 async def fetch_playlist_info(playlist_url: str) -> Dict:
     """
-    Fetch playlist metadata using upaste JSON or yt-dlp.
-
-    Runs yt-dlp in a thread to avoid blocking the event loop.
+    Fetch playlist metadata from upaste JSON.
 
     Args:
-        playlist_url: Full YouTube playlist URL.
+        playlist_url: upaste playlist export URL.
 
     Returns:
         A dictionary with keys:
-        - youtube_playlist_id: The YouTube playlist ID.
+        - youtube_playlist_id: Internal playlist identifier.
         - title: Playlist title.
         - url: Original playlist URL.
         - videos: List of video dictionaries with keys: youtube_video_id, title, url, position.
 
     Raises:
         ValueError: If the URL does not contain a playlist export.
-        yt_dlp.utils.DownloadError: On network or extraction failure.
     """
-    if normalize_upaste_url(playlist_url) is not None:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _fetch_upaste_playlist_info_sync, playlist_url)
-
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "extract_flat": False,  # need full info to get titles
-        "skip_download": True,
-        "force_generic_extractor": False,
-        "extract_playlist": True,
-    }
+    if normalize_upaste_url(playlist_url) is None:
+        raise ValueError("Only upaste.de playlist export URLs are supported.")
     loop = asyncio.get_running_loop()
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = await loop.run_in_executor(None, ydl.extract_info, playlist_url, False)
-
-    if "entries" not in info or not info["entries"]:
-        raise ValueError("The provided URL does not seem to be a playlist.")
-
-    playlist_title = info.get("title", "Untitled Playlist")
-    youtube_playlist_id = info.get("id", "")
-
-    videos = []
-    for entry in info["entries"]:
-        if entry is None:
-            continue
-        video_id = entry.get("id")
-        video_title = entry.get("title", "No Title")
-        if not video_id:
-            continue
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
-        videos.append(
-            {
-                "youtube_video_id": video_id,
-                "title": video_title,
-                "url": video_url,
-                "position": entry.get("playlist_index", 0) or 0,
-            }
-        )
-
-    return {
-        "youtube_playlist_id": youtube_playlist_id,
-        "title": playlist_title,
-        "url": playlist_url,
-        "videos": videos,
-    }
+    return await loop.run_in_executor(None, _fetch_upaste_playlist_info_sync, playlist_url)

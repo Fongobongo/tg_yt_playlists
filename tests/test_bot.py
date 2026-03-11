@@ -61,16 +61,7 @@ def make_message(text: str, chat_type: str = "group"):
 
 
 async def test_extract_playlist_url():
-    assert extract_playlist_url("https://www.youtube.com/playlist?list=PL123") == (
-        "https://www.youtube.com/playlist?list=PL123"
-    )
     assert extract_playlist_url("https://upaste.de/g3h") == "https://upaste.de/raw/g3h"
-    assert extract_playlist_url("http://youtube.com/playlist?list=PL456&feature=share") == (
-        "https://www.youtube.com/playlist?list=PL456"
-    )
-    assert extract_playlist_url("Check this: www.youtube.com/playlist?list=PL789") == (
-        "https://www.youtube.com/playlist?list=PL789"
-    )
     assert extract_playlist_url("Just a normal message") is None
 
 
@@ -96,7 +87,7 @@ async def test_cmd_add_playlist_without_argument_prompts_for_url(mock_bot):
 
 
 async def test_cmd_add_playlist_with_argument_processes_url(mock_bot):
-    message = make_message("/add_playlist https://www.youtube.com/playlist?list=PLABC")
+    message = make_message("/add_playlist https://upaste.de/g3h")
     state = DummyState()
 
     with patch("src.bot.add_playlist_to_session", new=AsyncMock()) as add_playlist:
@@ -106,7 +97,7 @@ async def test_cmd_add_playlist_with_argument_processes_url(mock_bot):
     add_playlist.assert_awaited_once_with(
         message,
         mock_bot,
-        "https://www.youtube.com/playlist?list=PLABC",
+        "https://upaste.de/raw/g3h",
         actor=None,
     )
 

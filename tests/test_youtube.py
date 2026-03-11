@@ -1,103 +1,13 @@
-"""Tests for playlist fetching."""
+"""Tests for upaste playlist fetching."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from src.youtube import fetch_playlist_info, normalize_upaste_url
 
 pytestmark = pytest.mark.asyncio
-
-
-async def test_fetch_playlist_info_success():
-    # Simulate yt-dlp info dict
-    mock_info = {
-        "id": "PL12345",
-        "title": "My Playlist",
-        "entries": [
-            {
-                "id": "vid1",
-                "title": "First Video",
-                "playlist_index": 1,
-            },
-            {
-                "id": "vid2",
-                "title": "Second Video",
-                "playlist_index": 2,
-            },
-        ],
-    }
-
-    class MockYoutubeDL:
-        def __init__(self, opts):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def extract_info(self, url, download):
-            return mock_info
-
-    with patch("src.youtube.yt_dlp.YoutubeDL", MockYoutubeDL):
-        result = await fetch_playlist_info("https://www.youtube.com/playlist?list=PL12345")
-
-    assert result["youtube_playlist_id"] == "PL12345"
-    assert result["title"] == "My Playlist"
-    assert result["url"] == "https://www.youtube.com/playlist?list=PL12345"
-    assert len(result["videos"]) == 2
-    assert result["videos"][0] == {
-        "youtube_video_id": "vid1",
-        "title": "First Video",
-        "url": "https://www.youtube.com/watch?v=vid1",
-        "position": 1,
-    }
-    assert result["videos"][1]["youtube_video_id"] == "vid2"
-
-
-async def test_fetch_playlist_info_no_entries():
-    """Raise ValueError if URL does not contain a playlist."""
-    mock_info = {"title": "Single Video", "entries": None}
-
-    class MockYoutubeDL:
-        def __init__(self, opts):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def extract_info(self, url, download):
-            return mock_info
-
-    with patch("src.youtube.yt_dlp.YoutubeDL", MockYoutubeDL):
-        with pytest.raises(ValueError, match="does not seem to be a playlist"):
-            await fetch_playlist_info("https://www.youtube.com/watch?v=abc")
-
-
-async def test_fetch_playlist_info_download_error():
-    """Propagate yt-dlp errors."""
-    class MockYoutubeDL:
-        def __init__(self, opts):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def extract_info(self, url, download):
-            raise Exception("network failure")
-
-    with patch("src.youtube.yt_dlp.YoutubeDL", MockYoutubeDL):
-        with pytest.raises(Exception, match="network failure"):
-            await fetch_playlist_info("https://www.youtube.com/playlist?list=PL123")
 
 
 async def test_normalize_upaste_url_supports_regular_and_raw_links():
@@ -134,3 +44,8 @@ async def test_fetch_playlist_info_from_upaste_json():
     assert result["url"] == "https://upaste.de/raw/g3h"
     assert result["videos"][0]["youtube_video_id"] == "vid1"
     assert result["videos"][1]["title"] == "Second Video"
+
+
+async def test_fetch_playlist_info_rejects_non_upaste_url():
+    with pytest.raises(ValueError, match="Only upaste.de playlist export URLs are supported."):
+        await fetch_playlist_info("https://www.youtube.com/playlist?list=PL12345")

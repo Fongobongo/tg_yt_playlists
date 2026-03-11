@@ -1,6 +1,6 @@
 # Telegram YouTube Playlist Intersection Bot
 
-Telegram bot for collecting YouTube playlist links inside a shared session and showing videos that are present in every submitted playlist.
+Telegram bot for collecting exported playlist links inside a shared session and showing videos that are present in every submitted playlist.
 
 ## Stack
 
@@ -8,7 +8,6 @@ Telegram bot for collecting YouTube playlist links inside a shared session and s
 - aiogram 3
 - asyncpg
 - Supabase Postgres
-- yt-dlp
 
 ## What Changed
 

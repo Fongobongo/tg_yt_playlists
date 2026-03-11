@@ -1,7 +1,6 @@
 """Telegram bot entry point and handlers."""
 
 import logging
-import re
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command, StateFilter
@@ -49,10 +48,6 @@ from .youtube import fetch_playlist_info, normalize_upaste_url
 
 logger = logging.getLogger(__name__)
 
-YOUTUBE_PLAYLIST_REGEX = re.compile(
-    r"(?:https?://)?(?:www\.)?youtube\.com/playlist\?list=([^&\s]+)"
-)
-
 
 class AddPlaylistFlow(StatesGroup):
     waiting_for_url = State()
@@ -70,14 +65,7 @@ def resolve_actor(message: Message, actor: User | None = None) -> User:
 
 def extract_playlist_url(text: str) -> str | None:
     """Extract a supported playlist source URL from text."""
-    upaste_url = normalize_upaste_url(text)
-    if upaste_url is not None:
-        return upaste_url
-    match = YOUTUBE_PLAYLIST_REGEX.search(text)
-    if not match:
-        return None
-    playlist_id = match.group(1)
-    return f"https://www.youtube.com/playlist?list={playlist_id}"
+    return normalize_upaste_url(text)
 
 
 def get_main_menu_keyboard(is_private: bool) -> InlineKeyboardMarkup:
